@@ -9,6 +9,12 @@ var devices = {
         } else if (f.h == 5) {
             g = window.extsensorContainer.cloneNode(true);
             g.querySelector("span.device-value").innerHTML = (typeof f.v === "undefined") ? "-" : f.v;
+        } else if (f.h == 3) {
+            g = window.owContainer.cloneNode(true);
+            g.querySelector("span.device-address").innerHTML = f.a;
+            g.querySelector("span.device-channel").innerHTML = f.n;
+            g.querySelector("select.device-pintype").value = f.x;
+            g.querySelector("span.device-value").innerHTML = (typeof f.v === "undefined") ? "-" : ((f.v) ? "active" : "inactive")
         } else {
             g = window.pinContainer.cloneNode(true);
             g.querySelector("select.device-pintype").value = f.x;
@@ -67,6 +73,10 @@ function cmdfrom(b) {
     c.p = a.p;
     if (c.h == 2) {
         c.a = a.a
+    } else if (c.h == 3) {
+        c.a = a.a;
+        c.n = a.n;
+        c.x = d.querySelector("select.device-pintype").value
     } else if (c.h == 1) {
         c.x = d.querySelector("select.device-pintype").value
     }
@@ -147,7 +157,7 @@ function list() {
 }
 
 function erase() {
-    BWF.send("E")
+    if (confirm("Erase All Setting?")) BWF.send("E");
 }
 
 function listGot() {
@@ -169,14 +179,17 @@ function detachNode(query) {
     return d;
 }
 
-function init() {
-
-    getActiveNavItem();
-    Q("#verinfo").innerHTML = "v" + JSVERSION;
+function init(classic) {
+    if (typeof classic == "undefined") classic = false;
+    if (!classic) {
+        getActiveNavItem();
+        Q("#verinfo").innerHTML = "v" + JSVERSION;
+    }
 
     window.sensorContainer = detachNode(".device-container.sensor-device");
     window.pinContainer = detachNode(".device-container.pin-device");
     window.extsensorContainer = detachNode(".device-container.extsensor-device");
+    window.owContainer = detachNode(".device-container.ow-device");
 
     BWF.init({
         error: function(a) {

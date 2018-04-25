@@ -74,9 +74,9 @@
 //
 // Enable External temperature Sensor
 //
-// #ifndef BREWPI_EXTERNAL_SENSOR
- #define BREWPI_EXTERNAL_SENSOR true
-// #endif
+#ifndef BREWPI_EXTERNAL_SENSOR
+#define BREWPI_EXTERNAL_SENSOR true
+#endif
 //
 //////////////////////////////////////////////////////////////////////////
 
@@ -139,7 +139,6 @@
 #ifndef BREWPI_LCD
 #define BREWPI_LCD 1
 #endif
-
 //
 //////////////////////////////////////////////////////////////////////////
 
@@ -153,15 +152,15 @@
 
 //////////////////////////////////////////////////////////////////////////
 //
-// #ifndef BREWPI_ROTARY_ENCODER
+#ifndef BREWPI_ROTARY_ENCODER
 #define BREWPI_ROTARY_ENCODER 0
-// #endif
+#endif
 //
 //////////////////////////////////////////////////////////////////////////
 
-// default supports 2 buttions
+// default supports 2 buttons
 #ifndef BREWPI_BUTTONS
-#define  BREWPI_BUTTONS 1
+#define BREWPI_BUTTONS 1
 #endif
 
 #ifndef ButtonViaPCF8574 
@@ -201,7 +200,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 //
-// Board Definitoin
+// Board Definition
 //
 // 
 #define BrewShield 0
@@ -214,13 +213,14 @@
 
 //////////////////////////////////////////////////////////////////////////
 //
-// Pin Configuration - Change the below to match your individual pinout
+// Pin Configuration - Change the settings below to match your individual pinout
 //
 // pins
 
 #define NODEMCU_PIN_A0 17	// Analog
 
-#define NODEMCU_PIN_D0 16	// No interrupt, do not use for rotary encoder
+#define NODEMCU_PIN_D0 16	// No interrupt, do not use for rotary encoder,
+                            // Also controlls 2nd LED on NodeMCU board
 #define NODEMCU_PIN_D1 5	// Generally used for I2C
 #define NODEMCU_PIN_D2 4	// Generally used for I2C
 #define NODEMCU_PIN_D3 0
@@ -251,10 +251,10 @@
 #endif
 // NO LCD, NO BUTTONs
 #define BREWPI_LCD false
+#undef BREWPI_MENU
 #define BREWPI_MENU 0
 #undef  BREWPI_BUTTONS 
 #define  BREWPI_BUTTONS 0
-
 
 #elif BOARD == Thorrak_PCB
 #define oneWirePin NODEMCU_PIN_D6  // If oneWirePin is specified, beerSensorPin and fridgeSensorPin are ignored
@@ -302,7 +302,19 @@
 #ifdef BREWPI_OLED128x64_LCD
 #define OLED128x64_LCD_ADDRESS 0x3c
 #define STATUS_LINE 1
+//////////////////////////////////////////////////////////////////////////
+//
+// OLED orientation
+// 1: flipScreenVertically() will be called on init,
+//    resulting in a 180° rotation. This is the default.
+// 0: flipScreenVertically() will be omitted
+//
+#ifndef OLED128x64_LCD_ORIENTATION
+#define OLED128x64_LCD_ORIENTATION 1
 #endif
+/////////////////////////////////////////////////////////////////////////
+
+#endif //BREWPI_OLED128x64_LCD
 
 
 //#if BREWPI_ROTARY_ENCODER  || BREWPI_BUTTONS
@@ -383,8 +395,61 @@
 //#endif
 
 #define EMIWorkaround 1
-#define BPL_VERSION "2.7"
+#define BPL_VERSION "3.0"
 
 #ifndef EanbleParasiteTempControl
 #define EanbleParasiteTempControl 0
 #endif
+
+/**************************************************************************************/
+/*  Configuration: 																	  */
+/*  Only one setting: the serial used to connect to.                                  */
+/*   if SoftwareSerial is used. RX/TX PIN must be defined.                            */
+/*   else, UART0(Serial) is used.                                                     */
+/**************************************************************************************/
+
+//#define SerialDebug false
+
+#if SerialDebug == true
+#define DebugPort Serial
+#define DBG_PRINTF(...) DebugPort.printf(__VA_ARGS__)
+#define DBG_PRINT(...) DebugPort.print(__VA_ARGS__)
+#else
+#define DBG_PRINTF(...)
+#define DBG_PRINT(...)
+#endif
+
+#define ENABLE_LOGGING 1
+
+/**************************************************************************************/
+/*  Advanced Configuration:  														  */
+/*   URLs .										  									  */
+/**************************************************************************************/
+
+#define EnableGravitySchedule true
+
+#define MINIMUM_TEMPERATURE_STEP 0.005
+#define MINIMUM_TEMPERATURE_SETTING_PERIOD 60
+#if SONOFF
+
+#ifdef NO_SPIFFS
+#define DEVELOPMENT_OTA true
+#else
+#define DEVELOPMENT_OTA false
+#endif
+
+#define DEVELOPMENT_FILEMANAGER false
+#else
+#define DEVELOPMENT_OTA true
+#define DEVELOPMENT_FILEMANAGER true
+#endif
+
+// for web interface update
+#define UPDATE_SERVER_PORT 8008
+#define FILE_MANAGEMENT_PATH "/filemanager"
+#define SYSTEM_UPDATE_PATH "/systemupdate"
+
+#define DEFAULT_PAGE_TITLE "BrewPiLess"
+#define DEFAULT_HOSTNAME "brewpiless"
+#define DEFAULT_USERNAME "brewpiless"
+#define DEFAULT_PASSWORD "brewpiless"
