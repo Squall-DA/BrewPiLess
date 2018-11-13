@@ -13,6 +13,14 @@ BPLSettings theSettings;
 
 void BPLSettings::load()
 {
+	DBG_PRINTF("syscfg:%d, timeinfo:%d, gdc:%d, \
+		tempSchedule:%d, brewStatus:%d, logFileIndexes:%d, \
+		remoteLogginInfo:%d, autoCapSettings:%d, parasiteTempControlSettings:%d\n",\
+		 offsetof(Settings,syscfg),offsetof(Settings,timeinfo),offsetof(Settings,gdc),
+		 offsetof(Settings,tempSchedule),offsetof(Settings,brewStatus),offsetof(Settings,logFileIndexes),
+		 offsetof(Settings,remoteLogginInfo),offsetof(Settings,autoCapSettings),
+		 offsetof(Settings,parasiteTempControlSettings));
+
 	fs::File f = SPIFFS.open(BPLSettingFileName, "r");
 	if(!f){
 		setDefault();
@@ -73,7 +81,7 @@ SystemConfiguration* BPLSettings::systemConfiguration(){
     return &_data.syscfg;
 }
     // decode json
-static void stringNcopy(char *dst,const char *src,int n){
+static void stringNcopy(char *dst,const char *src,size_t n){
 	if(strlen(src) < n){
 		strcpy(dst,src);
 	}else{
@@ -101,11 +109,11 @@ void BPLSettings::defaultSystemConfiguration(void){
 }
 
 bool BPLSettings::dejsonSystemConfiguration(String json){
-    char *buffer=strdup(json.c_str());
+//    char *buffer=strdup(json.c_str());
 
     const int BUFFER_SIZE = JSON_OBJECT_SIZE(15);
     StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
-	JsonObject& root = jsonBuffer.parseObject(buffer);
+	JsonObject& root = jsonBuffer.parseObject(json.c_str());
     
     SystemConfiguration *syscfg=&_data.syscfg;
 
@@ -120,11 +128,12 @@ bool BPLSettings::dejsonSystemConfiguration(String json){
         syscfg->wifiMode = root[KeyWifi];
         syscfg->backlite = root[KeyLcdBackLight];
 
-        syscfg->ip = (uint32_t) scanIP(root[KeyIpAddress]);
-        syscfg->gw = (uint32_t) scanIP(root[KeyGateway]);
-        syscfg->netmask = (uint32_t) scanIP(root[KeyNetmask]);
+//        syscfg->ip = (uint32_t) scanIP(root[KeyIpAddress]);
+//        syscfg->gw = (uint32_t) scanIP(root[KeyGateway]);
+//        syscfg->netmask = (uint32_t) scanIP(root[KeyNetmask]);
     }
-    free(buffer);
+//    free(buffer);
+	return true;
 }
     // encod json
 String BPLSettings::jsonSystemConfiguration(void){
@@ -153,7 +162,7 @@ String BPLSettings::jsonSystemConfiguration(void){
 }
    
 //***************************************************************
-// Gravity configuration
+// gravity device configuration
 
 #define KeyEnableiSpindel "ispindel"
 #define KeyTempCorrection "tc"
@@ -166,7 +175,7 @@ String BPLSettings::jsonSystemConfiguration(void){
 #define KeyLPFBeta "lpc"
 #define KeyStableGravityThreshold "stpt"
 #define KeyNumberCalPoints "npt"
-
+#define KeyUsePlato "plato"
 
  bool BPLSettings::dejsonGravityConfig(char* json)
 {
@@ -183,10 +192,10 @@ String BPLSettings::jsonSystemConfiguration(void){
 		gdc->ispindelEnable=root[KeyEnableiSpindel];
 		gdc->ispindelTempCal = root[KeyTempCorrection];
 
-		if(gdc->ispindelTempCal){
+//		if(gdc->ispindelTempCal){
 		    gdc->ispindelCalibrationBaseTemp =
                 (root.containsKey(KeyCorrectionTemp))? root[KeyCorrectionTemp]:20;
-		}
+//		}
 		gdc->calculateGravity=root[KeyCalculateGravity];
 		gdc->ispindelCoefficients[0]=root[KeyCoefficientA0];
 		gdc->ispindelCoefficients[1]=root[KeyCoefficientA1];
@@ -195,6 +204,7 @@ String BPLSettings::jsonSystemConfiguration(void){
         gdc->lpfBeta =root[KeyLPFBeta];
         gdc->stableThreshold=root[KeyStableGravityThreshold];
 		gdc->numberCalPoints=root[KeyNumberCalPoints];
+		gdc->usePlato = root.containsKey(KeyUsePlato)? root[KeyUsePlato]:0;
 		// debug
 		#if SerialDebug
 		Serial.print("\nCoefficient:");
@@ -228,6 +238,7 @@ String BPLSettings::jsonGravityConfig(void){
 		root[KeyCoefficientA2]=gdc->ispindelCoefficients[2];
 		root[KeyCoefficientA3]=gdc->ispindelCoefficients[3];
 		root[KeyNumberCalPoints] = gdc->numberCalPoints;
+		root[KeyUsePlato] = gdc->usePlato;
 	 String ret;
     root.printTo(ret);
     return ret;
@@ -403,7 +414,6 @@ bool BPLSettings::dejsonBeerProfile(String json)
 	tempSchedule->numberOfSteps=schedule.size();
 	if(tempSchedule->numberOfSteps > MaximumSteps) tempSchedule->numberOfSteps=MaximumSteps;
 
-	int i=0;
 	for(int i=0;i< tempSchedule->numberOfSteps ;i++){
 		ScheduleStep *step = &tempSchedule->steps[i];
 		JsonObject&	 entry= schedule[i];
@@ -425,24 +435,28 @@ bool BPLSettings::dejsonBeerProfile(String json)
     			    const char* attStr=entry["g"];
     			    float att=atof(attStr);
     			    if( strchr ( attStr, '%' ) > 0){
-	    			    DBG_PRINTF(" att:%s sg:%d",attStr,step->gravity.sg);
+	    			    DBG_PRINTF(" att:%s sg:%d ",attStr,step->gravity.sg);
 						step->attSpecified=true;
 						step->gravity.attenuation =(uint8_t) att;
                     }
     			}
 				if(! step->attSpecified){
     			    float fsg= entry["g"];
-	    		    step->gravity.sg = FloatToGravity(fsg);
+					if(_data.gdc.usePlato){
+	    		    	step->gravity.sg = PlatoToGravity(fsg);
+					}else{
+	    		    	step->gravity.sg = SGToGravity(fsg);
+					}
     			    DBG_PRINTF(" sg:%d",step->gravity.sg);
     		    }
 			}
 
 			if(entry.containsKey("s")){
     			int st= entry["s"];
-	    		step->gravity.stable.stableTime =st;
-	    		step->gravity.stable.stablePoint=(entry.containsKey("x"))? entry["x"]:_data.gdc.stableThreshold;
+	    		step->stable.stableTime =st;
+	    		step->stable.stablePoint=(entry.containsKey("x"))? entry["x"]:_data.gdc.stableThreshold;
 
-    			DBG_PRINTF("Stable :%d@%d",step->gravity.stable.stablePoint,step->gravity.stable.stableTime);
+    			DBG_PRINTF("Stable :%d@%d",step->stable.stablePoint,step->stable.stableTime);
 			}
 
 			DBG_PRINT(" temp:");
@@ -452,7 +466,8 @@ bool BPLSettings::dejsonBeerProfile(String json)
 	}
 
 	// unit
-	tempSchedule->unit= root["u"];
+	const char *uintStr=root["u"];
+	tempSchedule->unit=  *uintStr;
 
 	DBG_PRINTF("Load finished, st:%ld, unit:%c, _numberOfSteps:%d\n",tempSchedule->startDay,
 	tempSchedule->unit,tempSchedule->numberOfSteps);
@@ -523,13 +538,20 @@ String BPLSettings::jsonBeerProfile(void)
 				jstep["g"]= pertages[pertageIndex];
 				pertageIndex++;
 			}else{
-				jstep["g"]= s_step->gravity.sg;
+				DBG_PRINTF("  sg:%d \n",s_step->gravity.sg);
+				if(_data.gdc.usePlato){
+					jstep["g"]= GravityToPlato(s_step->gravity.sg);
+					Serial.print("SG:");
+					Serial.println(GravityToPlato(s_step->gravity.sg));
+				}else{
+					jstep["g"]= GravityToSG(s_step->gravity.sg);
+				}
 			}
 		}
 		if(strchr("suvbxwe",s_step->condition)){ 
 			// stable.
-			jstep["s"]= s_step->gravity.stable.stableTime;
-			jstep["x"]= s_step->gravity.stable.stablePoint;
+			jstep["s"]= s_step->stable.stableTime;
+			jstep["x"]= s_step->stable.stablePoint;
 		}
 	}// end of for
 	
@@ -590,6 +612,8 @@ bool BPLSettings::dejsonRemoteLogging(String json)
 	strcpy(logInfo->contentType,contentType);
 	logInfo->period = period;
 	logInfo->enabled = enabled;
+	logInfo->service = root.containsKey("service")? root["service"]:0;
+
   	return true;
 }
 
@@ -602,6 +626,7 @@ String BPLSettings::jsonRemoteLogging(void)
 	RemoteLoggingInformation *logInfo = remoteLogInfo();
 	root["enabled"] = logInfo->enabled;
 	root["period"] = logInfo->period;
+	root["service"] = logInfo->service;
 
 	if(logInfo->method ==mHTTP_GET) root["method"]="GET";
 	else if(logInfo->method ==mHTTP_PUT) root["method"]="PUT";

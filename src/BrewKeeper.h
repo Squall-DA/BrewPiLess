@@ -30,12 +30,11 @@ public:
 		_schedule =  theSettings.beerTempSchedule();
 		_status =  theSettings.brewStatus();
 	}
-
 	void setUnit(char unit);
-
-	void setOriginalGravity(float gravity);
-	float tempByTimeGravity(unsigned long time,Gravity gravity);
+	void setOriginalGravityPoint(uint16_t gravity);
+	float tempByTimeGravity(time_t time,Gravity gravity);
 	void setStableThreshold(uint8_t threshold){ _stableThreshold=threshold; }
+	void profileUpdated();
 };
 
 
@@ -51,13 +50,17 @@ protected:
 	void _loadProfile(void);
 public:
 
-	BrewKeeper(void(*puts)(const char*)):_write(puts),_lastGravity(INVALID_GRAVITY){}
-	void updateGravity(float sg){ _lastGravity=FloatToGravity(sg);}
-	void updateOriginalGravity(float sg){ _profile.setOriginalGravity(sg); }
+	BrewKeeper(void(*puts)(const char*)):_lastGravity(INVALID_GRAVITY),_write(puts){}
+	void updateGravity(float sg);
+	void updateOriginalGravity(float sg);
 
 	void keep(time_t now);
 
 	void setStableThreshold(uint8_t threshold){_profile.setStableThreshold(threshold);}
+
+	void profileUpdated(){ _profile.profileUpdated();}
+	void begin(void){ _profile.profileUpdated();}
+
 };
 
 #endif

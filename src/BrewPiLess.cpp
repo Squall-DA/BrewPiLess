@@ -71,8 +71,8 @@ extern "C" {
 #endif
 //WebSocket seems to be unstable, at least on iPhone.
 //Go back to ServerSide Event.
-#define UseWebSocket false
-#define UseServerSideEvent true
+#define UseWebSocket true
+#define UseServerSideEvent false
 #define ResponseAppleCNA true
 #define CaptivePortalTimeout 180
 
@@ -131,6 +131,11 @@ extern "C" {
 #if AUTO_CAP
 #define CAPPER_PATH "/cap"
 #endif
+
+#define WIFI_SCAN_PATH "/wifiscan"
+#define WIFI_CONNECT_PATH "/wificon"
+#define WIFI_DISC_PATH "/wifidisc"
+
 
 const char *public_list[]={
 "/bwf.js",
@@ -382,24 +387,29 @@ public:
 	        return request->requestAuthentication();
 
 			if(request->hasParam("data", true)){
-
 				if(theSettings.dejsonSystemConfiguration(request->getParam("data", true)->value())){
 					theSettings.save();
 					request->send(200,"application/json","{}");
 					display.setAutoOffPeriod(theSettings.systemConfiguration()->backlite);
+					if(theSettings.systemConfiguration()->wifiMode == WIFI_AP
+						&& WiFiSetup.isConnected()){
+							WiFiSetup.disconnect();
+						}
 					if(!request->hasParam("nb")){
 						requestRestart(false);
 					}
 				}else{
   					request->send(500);
+					DBG_PRINTF("json format error\n");
   					return;
   				}			
 			}else{
 	  			request->send(400);
+				DBG_PRINTF("no data in post\n");
   			}
 	 	}else if(request->method() == HTTP_GET &&  request->url() == TIME_PATH){
 			AsyncResponseStream *response = request->beginResponseStream("application/json");
-			response->printf("{\"t\":\"%s\",\"e\":%lu,\"o\":%ld}",TimeKeeper.getDateTimeStr(),TimeKeeper.getTimeSeconds(),TimeKeeper.getTimezoneOffset());
+			response->printf("{\"t\":\"%s\",\"e\":%lu,\"o\":%d}",TimeKeeper.getDateTimeStr(),TimeKeeper.getTimeSeconds(),TimeKeeper.getTimezoneOffset());
 			request->send(response);
 		}else if(request->method() == HTTP_POST &&  request->url() == TIME_PATH){
 			if(request->hasParam("time", true)){
@@ -523,6 +533,7 @@ public:
 				if(request->hasParam("data",true)){
 					if(theSettings.dejsonBeerProfile(request->getParam("data",true)->value())){
 						theSettings.save();
+						brewKeeper.profileUpdated();
 						request->send(200,"application/json","{}");
 					}else
 						request->send(402);
@@ -672,10 +683,10 @@ void greeting(std::function<void(const char*)> sendFunc)
 {
 	char buf[512];
 	// gravity related info., starting from "G"
-	if(externalData.iSpindelEnabled()){
+	//if(externalData.iSpindelEnabled()){
 		externalData.sseNotify(buf);
 		sendFunc(buf);
-	}
+	//}
 
 	// misc informatoin, including
 
@@ -688,7 +699,7 @@ void greeting(std::function<void(const char*)> sendFunc)
 	sprintf(buf,"A:{\"nn\":\"%s\",\"ver\":\"%s\",\"rssi\":%d,\
 				\"tm\":%lu,\"off\":%ld, \"log\":\"%s\",\"cap\":{%s}}"
 		,syscfg->titlelabel,BPL_VERSION,WiFi.RSSI(),
-		TimeKeeper.getTimeSeconds(),TimeKeeper.getTimezoneOffset(),
+		TimeKeeper.getTimeSeconds(),(long int)TimeKeeper.getTimezoneOffset(),
 		logname, capstate.c_str());
 	
 #else
@@ -703,6 +714,11 @@ void greeting(std::function<void(const char*)> sendFunc)
 	// beer profile:
 	String profile=String("B:") + theSettings.jsonBeerProfile();
 	sendFunc(profile.c_str());
+	//network status:
+
+	String nwstatus=String("W:") + WiFiSetup.status();
+	sendFunc(nwstatus.c_str());
+
 }
 
 #define GreetingInMainLoop 1
@@ -812,22 +828,50 @@ void notifyLogStatus(void)
 
 void reportRssi(void)
 {
+	char buf[256];
+
+	uint8_t mode, state;
+	char unit;
+	float beerSet, beerTemp, fridgeTemp, fridgeSet, roomTemp;
+	float min,max;
+	char statusLine[21];
+	brewPi.getTemperatureSetting(&unit,&min,&max);
+	brewPi.getAllStatus(&state, &mode, &beerTemp, &beerSet, &fridgeTemp, &fridgeSet, &roomTemp);
+	display.getLine(3,statusLine);
+
 #if EanbleParasiteTempControl
-	char buf[128];
-	char mode=parasiteTempController.getMode();
+	char ptcmode=parasiteTempController.getMode();
 	
-	if(mode == 'o')
-		sprintf(buf,"A:{\"rssi\":%d,\"ptc\":\"%c\",\"pt\":%ld}",WiFi.RSSI(),mode,parasiteTempController.getTimeElapsed());
-	else{
-		sprintf(buf,"A:{\"rssi\":%d,\"ptc\":\"%c\",\"pt\":%ld,\"ptctp\":%d,\"ptclo\":%d,\"ptcup\":%d}",
-			WiFi.RSSI(),mode,parasiteTempController.getTimeElapsed(),
-			parasiteTempController.getTemp(),parasiteTempController.getLowerBound(),parasiteTempController.getUpperBound());
-	}
+	sprintf(buf,"A:{\"rssi\":%d,\"ptc\":\"%c\",\"pt\":%u,\"ptctp\":%d,\"ptclo\":%d,\"ptcup\":%d,\
+		\"st\":%d,\"md\":\"%c\",\"bt\":%d,\"bs\":%d,\"ft\":%d,\"fs\":%d,\"rt\":%d,\"sl\":\"%s\",\"tu\":\"%c\"}",
+			WiFi.RSSI(),ptcmode,parasiteTempController.getTimeElapsed(),
+			parasiteTempController.getTemp(),parasiteTempController.getLowerBound(),parasiteTempController.getUpperBound(),
+		state,
+		mode,
+		(int)(beerTemp*100),
+		(int)(beerSet*100),
+		(int)(fridgeTemp*100),
+		(int)(fridgeSet*100),
+		(int)(roomTemp*100),
+		statusLine,
+		unit
+
+			);
 
 	stringAvailable(buf);
 #else
-	char buf[32];
-	sprintf(buf,"A:{\"rssi\":%d}",WiFi.RSSI());
+	sprintf(buf,"A:{\"rssi\":%d,\"st\":%d,\"md\":\"%c\",\"bt\":%d,\"bs\":%d,\"ft\":%d,\"fs\":%d,\"rt\":%d,\"sl\":\"%s\",\"tu\":\"%c\"}",
+		WiFi.RSSI(),
+		state,
+		mode,
+		(int)(beerTemp*100),
+		(int)(beerSet*100),
+		(int)(fridgeTemp*100),
+		(int)(fridgeSet*100),
+		(int)(roomTemp*100),
+		statusLine,
+		unit
+		);
 	stringAvailable(buf);
 #endif
 }
@@ -884,11 +928,7 @@ class LogHandler:public AsyncWebHandler
 public:
 
 	void handleRequest(AsyncWebServerRequest *request){
-<<<<<<< HEAD
 /*		if( request->url() == IGNORE_MASK_PATH){
-=======
-		if( request->url() == IGNORE_MASK_PATH){
->>>>>>> master
 			if(request->hasParam("m")){
 				uint32_t mask= request->getParam("m")->value().toInt();
 				brewLogger.addIgnoredCalPointMask(mask);
@@ -1135,6 +1175,123 @@ public:
 };
 ExternalDataHandler externalDataHandler;
 
+IPAddress scanIP(char const *str)
+	{
+    	// DBG_PRINTF("Scan IP length=%d :\"%s\"\n",len,buffer);
+    	// this doesn't work. the last byte always 0: ip.fromString(buffer);
+
+    	int Parts[4] = {0,0,0,0};
+    	int Part = 0;
+		char* ptr=(char*)str;
+    	for ( ; *ptr; ptr++)
+    	{
+	    char c = *ptr;
+	    if ( c == '.' )
+	    {
+		    Part++;
+		    continue;
+	    }
+	    Parts[Part] *= 10;
+	    Parts[Part] += c - '0';
+    	}
+
+    	IPAddress sip( Parts[0], Parts[1], Parts[2], Parts[3] );
+    	return sip;
+	}
+
+class NetworkConfig:public AsyncWebHandler
+{
+public:
+	NetworkConfig(){}
+
+	void handleRequest(AsyncWebServerRequest *request){
+		if(request->url() == WIFI_SCAN_PATH) handleNetworkScan(request);
+		else if(request->url() == WIFI_CONNECT_PATH) handleNetworkConnect(request);
+		else if(request->url() == WIFI_DISC_PATH) handleNetworkDisconnect(request);
+	}
+
+	void handleNetworkScan(AsyncWebServerRequest *request){
+		if(WiFiSetup.requestScanWifi())
+			request->send(200,"application/json","{}");
+		else 
+			request->send(403);
+	}
+
+	void handleNetworkDisconnect(AsyncWebServerRequest *request){
+		WiFiSetup.disconnect();
+		theSettings.systemConfiguration()->wifiMode=WIFI_AP;
+		request->send(200,"application/json","{}");
+	}
+
+	
+	void handleNetworkConnect(AsyncWebServerRequest *request){
+
+		if(!request->hasParam("nw",true) && !request->hasParam("ap",true)){
+			request->send(400);
+			return;
+		}
+		
+		SystemConfiguration *syscfg=theSettings.systemConfiguration();
+		
+		if(request->hasParam("ap",true)){
+			// AP only mode
+			WiFiSetup.disconnect();
+			// save to config
+			syscfg->wifiMode  = WIFI_AP;
+		}else{
+			String ssid=request->getParam("nw",true)->value();
+			const char *pass=NULL;
+			if(request->hasParam("pass",true)){
+				pass = request->getParam("pass",true)->value().c_str();
+			}
+			if(request->hasParam("ip",true) && request->hasParam("gw",true) && request->hasParam("nm",true)){
+				DBG_PRINTF("static IP\n");
+				IPAddress ip=scanIP(request->getParam("ip",true)->value().c_str());
+				IPAddress gw=scanIP(request->getParam("gw",true)->value().c_str());
+				IPAddress nm=scanIP(request->getParam("nm",true)->value().c_str());
+				WiFiSetup.connect(ssid.c_str(),pass, 
+							ip,
+							gw,
+							nm
+				);
+				// save to config
+				syscfg->ip = ip;
+				syscfg->gw = gw;
+				syscfg->netmask = nm;
+				theSettings.save();
+			}else{
+				WiFiSetup.connect(ssid.c_str(),pass);
+				DBG_PRINTF("dynamic IP\n");
+			}
+			//MDNS.notifyAPChange();
+			syscfg->wifiMode  = WIFI_AP_STA;
+		}
+		theSettings.save();
+
+		request->send(200,"application/json","{}");
+	}
+
+	bool canHandle(AsyncWebServerRequest *request){
+		if(request->url() == WIFI_SCAN_PATH) return true; 
+		else if(request->url() == WIFI_CONNECT_PATH) return true;
+		else if(request->url() == WIFI_DISC_PATH) return true;
+
+	 	return false;
+	}
+
+	#if !LegacyEspAsyncLibraries
+	virtual bool isRequestHandlerTrivial() override final {return false;}
+	#endif
+};
+
+NetworkConfig networkConfig;
+
+void wiFiEvent(const char* msg){
+	char *buff=(char*)malloc(strlen(msg) +3);
+	sprintf(buff,"W:%s",msg);
+	stringAvailable(buff);
+	free(buff);
+}
 //{brewpi
 
 
@@ -1334,22 +1491,8 @@ void setup(void){
 	//1. Start WiFi
 	DBG_PRINTF("Starting WiFi...\n");
 	WiFiMode wifiMode= (WiFiMode) syscfg->wifiMode;
-	WiFiSetup.setNetwork(wifiMode,IPAddress(syscfg->ip),IPAddress(syscfg->gw),IPAddress(syscfg->netmask));
-	WiFiSetup.settingChanged([&](bool apmode,IPAddress ip, IPAddress gw, IPAddress mask){
-		if(apmode){
-			if(wifiMode == WIFI_AP) return;
-			DBG_PRINTF("AP mode selected\n");
-			syscfg->wifiMode =(uint8_t)WIFI_AP;
-		}else{
-			// change IP address
-			DBG_PRINTF("ip:%s, gw:%s, mask:%s\n",ip.toString().c_str(),gw.toString().c_str(),mask.toString().c_str());
-			syscfg->ip =(uint32_t) ip;
-			syscfg->gw =(uint32_t) gw;
-			syscfg->netmask =(uint32_t) mask;
-		}
-		theSettings.save();
-	});
-	WiFiSetup.setTimeout(CaptivePortalTimeout);
+	WiFiSetup.staConfig(wifiMode == WIFI_AP,IPAddress(syscfg->ip),IPAddress(syscfg->gw),IPAddress(syscfg->netmask));
+	WiFiSetup.onEvent(wiFiEvent);
 	WiFiSetup.begin(syscfg->hostnetworkname,syscfg->password);
 
   	DBG_PRINTF("WiFi Done!\n");
@@ -1357,7 +1500,7 @@ void setup(void){
 	// get time
 	initTime(WiFiSetup.isApMode());
 
-	if (!MDNS.begin(syscfg->hostnetworkname,WiFi.localIP())) {
+	if (!MDNS.begin(syscfg->hostnetworkname)) {
 			DBG_PRINTF("Error setting mDNS responder\n");
 	}else{
 		MDNS.addService("http", "tcp", 80);
@@ -1397,6 +1540,7 @@ void setup(void){
 	externalDataHandler.loadConfig();
 	webServer->addHandler(&externalDataHandler);
 
+	webServer->addHandler(&networkConfig);
 	//3.1.2 SPIFFS is part of the serving pages
 	//server.serveStatic("/", SPIFFS, "/","public, max-age=259200"); // 3 days
 
@@ -1432,6 +1576,8 @@ void setup(void){
 		externalData.setCalibrating(brewLogger.isCalibrating());
 		DBG_PRINTF("Start BrweNCal log:%d\n",brewLogger.isCalibrating());
 	}
+	
+	brewKeeper.begin();
 
 	#if AUTO_CAP
 	//Note: necessary to call after brewpi_setup() so that device has been installed.
@@ -1457,7 +1603,7 @@ void setup(void){
 }
 
 uint32_t _rssiReportTime;
-#define RssiReportPeriod 10
+#define RssiReportPeriod 5
 
 void loop(void){
 //{brewpi
@@ -1532,6 +1678,7 @@ void loop(void){
   		if((millis() - _time) > TIME_RESTART_TIMEOUT){
   			if(_disconnectBeforeRestart){
   				WiFi.disconnect();
+  				WiFiSetup.setAutoReconnect(false);
   				delay(1000);
   			}
   			ESP.restart();

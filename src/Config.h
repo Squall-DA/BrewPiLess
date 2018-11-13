@@ -145,7 +145,7 @@
 //////////////////////////////////////////////////////////////////////////
 //
 #ifndef BREWPI_BUZZER
-#define BREWPI_BUZZER 0
+#define BREWPI_BUZZER 1
 #endif
 //
 //////////////////////////////////////////////////////////////////////////
@@ -273,7 +273,8 @@
 #define coolingPin NODEMCU_PIN_D5
 #define heatingPin NODEMCU_PIN_D7
 #if AUTO_CAP
-#define doorPin    NODEMCU_PIN_D0
+#define doorPin    NODEMCU_PIN_D8
+#define BuzzPin NODEMCU_PIN_D0
 #else
 #define doorPin    NODEMCU_PIN_D4
 #define BuzzPin NODEMCU_PIN_D0
@@ -395,7 +396,7 @@
 //#endif
 
 #define EMIWorkaround 1
-#define BPL_VERSION "3.0"
+#define BPL_VERSION "3.3"
 
 #ifndef EanbleParasiteTempControl
 #define EanbleParasiteTempControl 0
@@ -453,3 +454,17 @@
 #define DEFAULT_HOSTNAME "brewpiless"
 #define DEFAULT_USERNAME "brewpiless"
 #define DEFAULT_PASSWORD "brewpiless"
+
+
+#ifndef WebPageLanguage
+#define WebPageLanguage english
+#endif
+
+#define ClassicFrontEnd 0
+#define TomsFrontEnd 1
+
+#ifndef UseNewFrontEnd
+#define FrontEnd ClassicFrontEnd
+#else
+#define FrontEnd TomsFrontEnd
+#endif

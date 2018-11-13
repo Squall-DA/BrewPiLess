@@ -245,7 +245,7 @@ var profileEditor = {
         var rowlist = tb.getElementsByTagName("tr");
 
         if (rowlist.length >= MAX_STEP) {
-            alert("Too many steps!");
+            alert("<%= script_control_too_many_steps %>");
             return;
         }
         var stage;
@@ -332,6 +332,8 @@ var profileEditor = {
         }
     },
     renderRows: function(g) {
+        if (typeof g.length == "undefined")
+            console.log("error!");
         var e = document.getElementById("profile_t").getElementsByTagName("tbody")[0];
         for (var f = 0; f < g.length; f++) {
             var c = this.row.cloneNode(true);
@@ -343,9 +345,13 @@ var profileEditor = {
 
     initable: function(c, e) {
         this.setStartDate(e);
-        var b = document.getElementById("profile_t").getElementsByTagName("tbody")[0];
-        this.row = b.getElementsByTagName("tr")[0];
-        b.removeChild(this.row);
+        if (!this.row) {
+            var b = document.getElementById("profile_t").getElementsByTagName("tbody")[0];
+            this.row = b.getElementsByTagName("tr")[0];
+            b.removeChild(this.row);
+        } else {
+            this.clear();
+        }
         this.renderRows(c)
     },
     clear: function() {
@@ -486,7 +492,7 @@ var PL = {
                 f.list(f.plist)
             },
             fail: function(a) {
-                alert("failed:" + a)
+                alert("<%= failed %>:" + a);
             }
         })
     },
@@ -508,12 +514,12 @@ var PL = {
     list: function(i) {
         var a = this;
         var h = Q(a.div).querySelector(".profile-list");
-        var e;
-        while (e = h.querySelector("li:nth-of-type(0)")) {
-            h.removeChild(e)
+        var lis = h.querySelectorAll("li");
+        for (var i = 0; i < lis.length; i++) {
+            h.removeChild(lis[i]);
         }
         var b = a.row;
-        i.forEach(function(f, g) {
+        a.plist.forEach(function(f, g) {
             var c = b.cloneNode(true);
             c.querySelector(".profile-name").innerHTML = f;
             c.querySelector(".profile-name").onclick = function(j) {
@@ -554,7 +560,7 @@ var PL = {
                 a.list(a.plist)
             },
             fail: function(b) {
-                alert("failed:" + b)
+                alert("<%= failed %>:" + b);
             }
         })
     },
@@ -585,7 +591,7 @@ var PL = {
         }
         var g = profileEditor.getProfile();
         if (g === false) {
-            alert("invalid value. check again");
+            alert("<%= script_control_invalid_value_check_again %>");
             return
         }
         var f = this;
@@ -600,7 +606,7 @@ var PL = {
                 f.cancelSave()
             },
             fail: function(a) {
-                alert("failed:" + a)
+                alert("<%= failed %>:" + a);
             }
         })
     }
@@ -643,7 +649,7 @@ var ControlChart = {
                 axisLabelFontSize: 12,
                 gridLineColor: '#ccc',
                 gridLineWidth: '0.1px',
-                labels: ["Time", "Temperature"],
+                labels: ["<%= script_control_time %>", "<%= script_control_temperature %>"],
                 labelsDiv: document.getElementById(div + "-label"),
                 legend: 'always',
                 labelsDivStyles: {
@@ -724,13 +730,13 @@ var modekeeper = {
     },
     apply: function() {
         if (!BrewPiSetting.valid) {
-            alert("Not connected to controller.");
+            alert("<%= script_control_not_conected_to_controller %>");
             //		return;
         }
         if ((this.cmode == "beer") || (this.cmode == "fridge")) {
             var v = document.getElementById(this.cmode + "-t").value;
             if (v == '' || isNaN(v) || (v > BrewPiSetting.maxDegree || v < BrewPiSetting.minDegree)) {
-                alert("Invalid Temperature:" + v);
+                alert("<%= script_control_invalid_temperature %>" + v);
                 return;
             }
             if (this.cmode == "beer") {
@@ -746,7 +752,7 @@ var modekeeper = {
         } else {
             // should save first.
             if (profileEditor.dirty) {
-                alert("save the profile first before apply");
+                alert("<%= script_control_save_profile_before_applay %>");
                 return;
             }
             //console.log("j{mode:p}");
@@ -769,7 +775,7 @@ var modekeeper = {
                         BWF.send("j{mode:p}");
                     },
                     fail: function(d) {
-                        alert("failed:" + d);
+                        alert("<%= failed %>:" + d);
                     }
                 });
             };
@@ -788,7 +794,7 @@ function saveprofile() {
     //console.log("save");
     var r = profileEditor.getProfile();
     if (r === false) {
-        alert("invalid value. check again");
+        alert("<%= script_control_invalid_value_check_again %>");
         return;
     }
     var json = JSON.stringify(r);
@@ -800,10 +806,11 @@ function saveprofile() {
         mime: "application/x-www-form-urlencoded",
         data: "data=" + encodeURIComponent(json),
         success: function(d) {
-            alert("Done.")
+            profileEditor.markdirty(false);
+            alert("<%= done %>")
         },
         fail: function(d) {
-            alert("failed to save.");
+            alert("<%= script_control_failed_to_save %>");
         }
     });
 }
@@ -865,6 +872,7 @@ function initctrl() {
         error: function(e) {
             //console.log("error");
             communicationError();
+            closeDlgLoading();
         },
         handlers: {
             A: function(c) {
@@ -872,7 +880,7 @@ function initctrl() {
                     Q("#hostname").innerHTML = c["nn"];
                 }
                 if (typeof c["ver"] != "undefined") {
-                    if (JSVERSION != c["ver"]) alert("Version Mismatched!. Reload the page.");
+                    if (JSVERSION != c["ver"]) alert("<%= script_control_version_mismatched %>");
                     Q("#verinfo").innerHTML = "v" + c["ver"];
                 }
                 if (typeof c["cap"] != "undefined")

@@ -2,8 +2,9 @@
             toggle: function(type) {
                 this.chart.toggleLine(type);
             },
-            init: function(id) {
+            init: function(id, y1, y2) {
                 this.chart = new BrewChart(id);
+                this.chart.setLabels(y1, y2);
             },
             setIgnoredMask: function(m) {
                 var t = this;
@@ -51,13 +52,20 @@
             return log;
         }
 
+        function showPlatoUnit() {
+            var units = document.querySelectorAll(".platounit");
+            for (var i = 0; i < units.length; i++) {
+                units[i].style.display = "inline-block";
+            }
+        }
+
         function loaded() {
             // get range, if any
             var range = getParameterByName("r");
             if (range) {
                 window.iniRange = range.split("-");
             }
-            BChart.init("div_g");
+            BChart.init("div_g", Q('#ylabel').innerHTML, Q('#y2label').innerHTML);
             Q("#div_g").oncontextmenu = function(ev) {
                 ev = ev || window.event;
 
@@ -91,7 +99,7 @@
             xhr.responseType = 'arraybuffer';
             xhr.onload = function(e) {
                 if (this.status == 404) {
-                    console.log("Error getting log data");
+                    console.log("error getting log data.");
                     return;
                 }
                 // response is unsigned 8 bit integer
@@ -110,12 +118,13 @@
                     var date = new Date(BChart.chart.starttime * 1000);
                     Q("#log-start").innerHTML = BChart.chart.formatDate(date);
                     if (typeof window.iniRange !== "undefined") BChart.chart.setXRange(window.iniRange);
+                    if (BChart.chart.plato) showPlatoUnit();
                 } else {
-                    alert("Invalid log!");
+                    alert("<%= script_viewer_invalid_log %>");
                 }
             };
             xhr.ontimeout = function(e) {
-                console.error("Timeout!!");
+                console.error("Timeout!");
             };
             xhr.onerror = function() {
                 console.log("error getting data.");

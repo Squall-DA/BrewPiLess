@@ -79,11 +79,12 @@ protected:
 	void setOriginalGravity(float og);	
 public:
 	ExternalData(void):_gravity(INVALID_GRAVITY),_auxTemp(INVALID_TEMP),
-	_deviceVoltage(INVALID_VOLTAGE),_lastUpdate(0)
+	_lastUpdate(0),_deviceVoltage(INVALID_VOLTAGE)
 	,_ispindelName(NULL),_calibrating(false)
 	{ _filteredGravity = INVALID_GRAVITY;}
 
-	float gravity(bool filtered=false){ return filtered? _filteredGravity:_gravity;}
+	float gravity(bool filtered=false);
+	float plato(bool filtered=false);
 
 	// to prevent from calculate gravity when no valid formula available.
 	void waitFormula();

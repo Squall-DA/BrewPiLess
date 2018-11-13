@@ -43,6 +43,7 @@ BrewLogger::BrewLogger(void){
 	
 	const char* BrewLogger::currentLog(void)
 	{
+		if(!_recording) return NULL;
 		if(_pFileInfo->logname[0] != 0)
 			return _pFileInfo->logname;
 		else return NULL;
@@ -52,13 +53,16 @@ BrewLogger::BrewLogger(void){
 	{
 		// populate JS
 		String ret=String("{\"rec\":");
-		if(_pFileInfo->logname[0] != 0){
+		if(_recording){
 			ret += "1, \"log\":\"" + String(_pFileInfo->logname)
 				+"\",\"start\":" + String(_pFileInfo->starttime);
 		}else{
 			ret += "0";
 		}
 		ret += ",\"fs\":" + fsinfo();
+
+		ret += ",\"plato\":" + String(theSettings.GravityConfig()->usePlato? "1":"0");
+
 		ret += ",\"list\":[";
 
 		for(int i=0;i<MAX_LOG_FILE_NUMBER;i++){
@@ -109,84 +113,123 @@ BrewLogger::BrewLogger(void){
 		size_t fsize= _logFile.size(); 	
 		DBG_PRINTF("resume file:%s size:%d\n",buff,fsize);
 
-		if(fsize < 8){
+/*		if(fsize < 8){
+            DBG_PRINTF("resume failed\n");
+			_logFile.close();
+			return false;
+		}
+*/
+		int dataRead;
+		size_t offset=0;
+		int    processIndex=0;
+		uint8_t tag, mask;
+
+
+		dataRead=_logFile.read((uint8_t*)_logBuffer,LogBufferSize);
+		DBG_PRINTF("read:%ld\n",dataRead);
+		if(dataRead < 8){
             DBG_PRINTF("resume failed\n");
 			_logFile.close();
 			return false;
 		}
 
-		size_t dataAvail;
-		uint8_t tag, mask;
-
-		tag= _logFile.read();
-		mask = _logFile.read();
+		tag= _logBuffer[processIndex++];
+		mask = _logBuffer[processIndex++];
 
 		if(tag == StartLogTag){
 			_calibrating = (mask & 0x20) != 0x20;
+			_usePlato = (mask & 0x40) != 0x40;
 			DBG_PRINTF("resume cal:%d\n",_calibrating);
-			for(int v=0;v<6;v++) _logFile.read();
+			processIndex += 6;
 		}else{
 			DBG_PRINTF("resume failed, no start tag\n");
 			_logFile.close();
 			return false;
 		}
-		while((dataAvail=_logFile.available())){
-			if (dataAvail<2 ) break;
+		do{
+			while((dataRead-processIndex)>=2){
+				//DBG_PRINTF("dataavail:%ld\n",dataRead-processIndex);
+				tag= _logBuffer[processIndex++];
+				mask = _logBuffer[processIndex++];
 
-			tag= _logFile.read();
-			mask = _logFile.read();
+				if(tag == PeriodTag){
+					// advance one tick
+		    	    _resumeLastLogTime += _tempLogPeriod/1000;
 
-			if(tag == PeriodTag){
-				// advance one tick
-		        _resumeLastLogTime += _tempLogPeriod/1000;
+					//TODO: check available data?
+		       		// int numberInRecord=0;
+					size_t recordSize;
+					recordSize =0; 
+		        	uint8_t bitmask;
+					bitmask=1;
+					for(int i=0;i<NumberDataBitMask;i++, bitmask=bitmask<<1) 
+						if(mask & bitmask)
+							recordSize +=2;
 
-				//TODO: check available data?
-		       	// int numberInRecord=0;
-		        // for(int i=0;i<NumberDataBitMask;i++) if(mask & (1<<i)) numberInRecord +=2;
-				int recordSize;
-				recordSize =2; // include the tag
-        		for(int i=0;i<NumberDataBitMask;i++){
-	        		if(mask & (1<<i)){
-						recordSize += 2;
-						if (dataAvail< recordSize ) break;
-			        	
-						int d0=_logFile.read();
-    			        int d1=_logFile.read();
-						// get gravity data that we need
-		        		if( i == OrderGravity){        
-							int gravityInt = (d0 << 8) | d1;
-                            DBG_PRINTF("resume@%ld, SG:%d\n",_resumeLastLogTime,gravityInt);
+					if (dataRead-processIndex < (int) recordSize ){
+						processIndex -= 2;
+						break;
+					}
+					bitmask=1;
+        			for(int i=0;i<NumberDataBitMask;i++, bitmask=bitmask<<1){
+	        			if(mask & bitmask){
+								#if SerialDebug
+							int d0=_logBuffer[processIndex++];
+    			    	   	int d1=_logBuffer[processIndex++];
+							   #endif
+							// get gravity data that we need							
+		        			if( i == OrderGravity){        
+								#if SerialDebug
+								int gravityInt = (d0 << 8) | d1;
+                            	DBG_PRINTF("resume@%ld, SG:%d\n",_resumeLastLogTime,gravityInt);
+								#endif
                                     // dont trust the data
-//                            if(gravityInt > 8000 && gravityInt < 12500)
+//                            	if(gravityInt > 8000 && gravityInt < 12500)
 //                                    gravityTracker.add(GravityDecode(gravityInt),_resumeLastLogTime);
-				        } // if this is Gravity data
-			        } // if the field exists
-			    } // for each bit
-
-		    }else if(tag == ResumeBrewTag){
-					if (dataAvail<4 ) break;
-					size_t d1 =(size_t)_logFile.read();
-		    		size_t d0 =(size_t)_logFile.read();
-					size_t tdiff= (mask <<16) + (d1 << 8) + d0;
-			    	_resumeLastLogTime = _pFileInfo->starttime + tdiff;
-			}else if(tag == CalibrationPointTag  || tag == OriginGravityTag || tag == IgnoredCalPointMaskTag) {
-				if (dataAvail<4 ) break;
-				_logFile.read();
-				_logFile.read();
-			}else if(tag == StateTag  || tag == ModeTag  || tag ==CorrectionTempTag ){
-				// DO nothing.
-			}else{
-				DBG_PRINTF("Unknown tag %d,%d @%ld\n",tag,mask,dataAvail);
+				        	} // if this is gravity data
+			        	} // if the field exists
+			    	} // for each bit
+		    	}else if(tag == ResumeBrewTag){
+						if ((dataRead-processIndex)<2 ){
+							processIndex -=2;
+							break;
+						}
+						size_t d1 =(size_t)_logBuffer[processIndex++];
+		   	 			size_t d0 =(size_t)_logBuffer[processIndex++];
+						size_t tdiff= (mask <<16) + (d1 << 8) + d0;
+			    		_resumeLastLogTime = _pFileInfo->starttime + tdiff;
+				}else if(tag == CalibrationPointTag  || tag == OriginGravityTag || tag == IgnoredCalPointMaskTag) {
+					if (dataRead-processIndex<2 ){
+						processIndex -=2;
+						break;
+					}
+					processIndex +=2;
+				}else if(tag == StateTag  || tag == ModeTag  || tag ==CorrectionTempTag ){
+					// DO nothing.
+				}else{
+					DBG_PRINTF("Unknown tag %d,%d @%ld\n",tag,mask,offset+processIndex);
+				}
+			}//while() processing data in buffer
+			int dataLeft=0;
+			offset += processIndex;
+			for(;processIndex < dataRead;){
+				_logBuffer[dataLeft] = _logBuffer[processIndex];
+				dataLeft++,processIndex++;
 			}
-		}//while(_logFile.available()){
+			size_t len=_logFile.read((uint8_t*)_logBuffer+dataLeft,LogBufferSize - dataLeft);
+			if(len==0) break; // nothing to do
+			dataRead = len +  dataLeft;
+			DBG_PRINTF("read:%ld, all:%ld\n",len,dataRead);
+			processIndex=0;
 
+		}while(true);
 		// log a "new start" log
-		if(dataAvail) {
-			DBG_PRINTF("Incomplete record:%d\n",dataAvail);
+		if(processIndex !=dataRead) {
+			DBG_PRINTF("Incomplete record:%d\n",dataRead-processIndex);
 		}
 		// seek for SeekEnd might has a bug. use 
 		//_logFile.seek(dataAvail,SeekEnd);
-		_logFile.seek(fsize,SeekSet);
+		//_logFile.seek(fsize,SeekSet);
 		_logIndex =0;
 		_savedLength = fsize;
 		DBG_PRINTF("resume, total _savedLength:%d, _logIndex:%d\n",_savedLength,_logIndex);
@@ -239,6 +282,8 @@ BrewLogger::BrewLogger(void){
 		addState(_state);
 
 		saveIdxFile();
+		// flush to force write to file system.
+		_logFile.flush();
 		return true;
 	}
 
@@ -452,7 +497,7 @@ BrewLogger::BrewLogger(void){
 	size_t BrewLogger::volatileDataAvailable(size_t start,size_t offset)
 	{
 		// get size;
-		size_t dataAvail=(_logHead <= _logIndex)? (_logIndex-_logHead):(LogBufferSize + _logIndex - _logHead);
+		size_t dataAvail=(_logHead <= (int)_logIndex)? (_logIndex-_logHead):(LogBufferSize + _logIndex - _logHead);
 		dataAvail += VolatileHeaderSize; // for make-up header
 		//DBG_PRINTF("volatileDataAvailable,start:%d, offset:%d, _logHead %d _logIndex %d, _startOffset:%d, dataAvail:%d\n",start, offset,_logHead,_logIndex,_startOffset, dataAvail);
 		if( ((start + offset) == 0)
@@ -509,9 +554,11 @@ BrewLogger::BrewLogger(void){
 	void BrewLogger::addGravity(float gravity,bool isOg)
 	{
 		if(isOg){
-			_extOriginGravity = GravityEncode(gravity);
+			if(_usePlato) _extOriginGravity = PlatoEncode(gravity);
+			else _extOriginGravity = GravityEncode(gravity);
 		}else{
-			_extGravity=GravityEncode(gravity);
+			if(_usePlato) _extGravity=PlatoEncode(gravity);
+			else _extGravity=GravityEncode(gravity);
 		}
 	}
 
@@ -602,7 +649,11 @@ BrewLogger::BrewLogger(void){
 		uint8_t headerTag=5;
 		//8
 		*ptr++ = StartLogTag;
-		*ptr++ = headerTag | (fahrenheit? 0xF0:0xE0) ;
+		headerTag = headerTag | (fahrenheit? 0xF0:0xE0) ;
+		_usePlato =theSettings.GravityConfig()->usePlato;
+		if(_usePlato) headerTag = headerTag ^ 0x40;
+
+		*ptr++ = headerTag;
 		int period = _tempLogPeriod/1000;
 		*ptr++ = (char) (period >> 8);
 		*ptr++ = (char) (period & 0xFF);
@@ -627,14 +678,16 @@ BrewLogger::BrewLogger(void){
 	void BrewLogger::startLog(bool fahrenheit,bool calibrating)
 	{
 		char *ptr=_logBuffer;
+		_usePlato=theSettings.GravityConfig()->usePlato;
+
 		// F0FF  peroid   4 bytes
 		// Start system time 4bytes
 		uint8_t headerTag=5;
 		*ptr++ = StartLogTag;
 
-		headerTag = headerTag | (fahrenheit? 0xF0:0xE0) ;
-
+		headerTag = headerTag | (fahrenheit? 0xF0:0xE0) ;		
 		if(calibrating) headerTag = headerTag ^ 0x20 ;
+		if(_usePlato) headerTag = headerTag ^ 0x40;
 
 		*ptr++ = headerTag;
 		
@@ -670,7 +723,7 @@ BrewLogger::BrewLogger(void){
 	int BrewLogger::freeBufferSpace(void)
 	{
 		//DBG_PRINTF("_logHead:%d, _logIndex: %d\n",_logHead,_logIndex);
-		if(_logIndex >= _logHead){
+		if(_logIndex >= (size_t)_logHead){
 			return LogBufferSize - _logIndex -1 + _logHead;
 		}else {
 			// _logIndex < _logHead

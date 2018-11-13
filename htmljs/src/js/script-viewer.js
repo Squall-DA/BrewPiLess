@@ -2,8 +2,9 @@
             toggle: function(type) {
                 this.chart.toggleLine(type);
             },
-            init: function(id) {
+            init: function(id, y1, y2) {
                 this.chart = new BrewChart(id);
+                this.chart.setLabels(y1, y2);
             },
             setIgnoredMask: function(m) {
                 var t = this;
@@ -21,6 +22,13 @@
                 t.chart.cal_igmask = m;
             }
         };
+
+        function showPlatoUnit() {
+            var units = document.querySelectorAll(".platounit");
+            for (var i = 0; i < units.length; i++) {
+                units[i].style.display = "inline-block";
+            }
+        }
 
         function loaded() {
             function openfile(f) {
@@ -42,17 +50,18 @@
                             BChart.chart.updateChart();
                             var date = new Date(BChart.chart.starttime * 1000);
                             Q("#log-start").innerHTML = BChart.chart.formatDate(date);
+                            if (BChart.chart.plato) showPlatoUnit();
                         } else {
-                            alert("Invalid log!");
+                            alert("<%= script_viewer_invalid_log %>");
                         }
                     };
                     r.readAsArrayBuffer(f);
                 } else {
-                    alert("Failed to load file");
+                    alert("<%= script_viewer_failed_load_file %>");
                 }
             }
 
-            BChart.init("div_g");
+            BChart.init("div_g", Q('#ylabel').innerHTML, Q('#y2label').innerHTML);
 
             if (Q('#dropfile')) {
                 Q('#dropfile').ondragover = function(e) {
@@ -81,7 +90,7 @@
             var link = document.createElement("a");
 
             if (link.download === undefined) { // feature detection
-                alert("Brower doesn't support downloading file.");
+                alert("<%= script_viewer_not_downloading_file %>");
                 return;
             }
 
@@ -131,5 +140,12 @@
             if (typeof window.file == "undefined") return;
             var ranges = BChart.chart.chart.xAxisRange();
             var data = BChart.chart.partial(ranges[0], ranges[1]);
+            download(new Blob(data, { type: 'octet/stream' }), window.file.name + "-partial");
+        }
+
+        function cutrange2p() {
+            if (typeof window.file == "undefined") return;
+            var ranges = BChart.chart.chart.xAxisRange();
+            var data = BChart.chart.partial2Plato(ranges[0], ranges[1]);
             download(new Blob(data, { type: 'octet/stream' }), window.file.name + "-partial");
         }

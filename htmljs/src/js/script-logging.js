@@ -48,7 +48,7 @@ var logs = {
         var t = this;
         if (t.logging) {
             // stop
-            if (confirm("Stop current logging?")) {
+            if (confirm("<%= script_logging_stop_current_logging %>")) {
                 //console.log("Stop logging");
                 var n = Q("#logname").value.trim();
                 s_ajax({
@@ -58,7 +58,7 @@ var logs = {
                         location.reload();
                     },
                     fail: function(d) {
-                        alert("Failed to stop for:" + d);
+                        alert("<%= script_logging_failed_stop_for %>" + d);
                     }
                 });
             }
@@ -68,20 +68,20 @@ var logs = {
         var t = this;
         if (!t.logging) {
             if (t.ll.length >= 10) {
-                alert("Too many logs. Delete some before creating new.");
+                alert("<%= script_logging_too_many_logs %>");
                 return;
             }
             if ((t.fs.size - t.fs.used) <= t.fs.block * 2) {
-                alert("Not enough free space!");
+                alert("<%= script_logging_not_free_space %>");
                 return;
             }
             var name = Q("#logname").value.trim();
             if (t.vname(name) === false) {
-                alert("Invalid file name, no special characters allowed.");
+                alert("<%= script_logging_invalid_file_name %>");
                 return;
             }
             if (t.dupname(name)) {
-                alert("Duplicated name.");
+                alert("<%= script_logging_duplicated_name %>");
                 return;
             }
             var arg = "";
@@ -89,14 +89,17 @@ var logs = {
             if (calispindel) {
                 var tilt = parseFloat(Q("#tiltinw").value.trim());
                 var reading = parseFloat(Q("#hydrometer").value.trim());
-                if (isNaN(tilt) || isNaN(reading)) {
-                    alert("tilt value and hydrometer reading is necessary!");
+                if (window.plato) reading = 0;
+                if (isNaN(tilt)) {
+                    alert("<%= script_logging_tilt_value_necessary %>");
+                } else if (!window.plato && (isNaN(tilt) || isNaN(reading))) {
+                    alert("<%= script_logging_tilt_value_and_hydrometer_necessary %>");
                     return;
                 }
                 arg = "&tw=" + tilt + "&hr=" + reading;
             }
 
-            if (confirm("Start new logging?")) {
+            if (confirm("<%= script_logging_start_new_log %>")) {
                 //console.log("Start logging");
                 s_ajax({
                     url: t.starturl + name + arg,
@@ -105,7 +108,7 @@ var logs = {
                         location.reload();
                     },
                     fail: function(d) {
-                        alert("Failed to start for:" + d);
+                        alert("<%= script_logging_failed_start_for %>" + d);
                     }
                 });
             }
@@ -130,7 +133,7 @@ var logs = {
     //},
     rm: function(n) {
         var t = this;
-        if (confirm("Delete the log " + t.ll[n].name)) {
+        if (confirm("<%= script_logging_delete_the_log %> " + t.ll[n].name)) {
             console.log("rm " + t.ll[n].name);
             s_ajax({
                 url: t.rmurl + n,
@@ -143,7 +146,7 @@ var logs = {
                     t.list(t.ll);
                 },
                 fail: function(d) {
-                    alert("Failed to delete for:" + d);
+                    alert("<%= script_logging_failed_delete_for %>" + d);
                 }
             });
         }
@@ -199,17 +202,23 @@ var logs = {
                 t.ll = r.list;
                 t.list(r.list);
                 t.fsinfo(r.fs.size, r.fs.used);
+                if (typeof r["plato"] != "undefined" && r.plato) {
+                    window.plato = true;
+                    var th = document.querySelectorAll(".tiltwatercorrect");
+                    for (var i = 0; i < th.length; i++)
+                        th[i].style.display = "none";
+                } else window.plato = false;
             },
             fail: function(e) {
-                alert("failed:" + e);
+                alert("<%= failed %>:" + e);
             }
         });
     },
 };
-
+// for remote logging
 function checkurl(t) {
     if (t.value.trim().startsWith("https")) {
-        alert("HTTPS is not supported");
+        alert("<%= script_logging_https_not_supported %>");
     }
 }
 
@@ -220,7 +229,7 @@ function checkformat(ta) {
     Q("#fmthint").innerHTML = "" + ta.value.length + "/256";
 }
 
-function method(c) {
+function cmethod(c) {
     var inputs = document.querySelectorAll('input[name$="method"]');
     for (var i = 0; i < inputs.length; i++) {
         if (inputs[i].id != c.id)
@@ -229,41 +238,236 @@ function method(c) {
     window.selectedMethod = c.value;
 }
 
-function update() {
-
+//Serivce specif widget processing
+// generic http
+function generichttp_get() {
     if (typeof window.selectedMethod == "undefined") {
-        alert("select Method!");
-        return;
+        alert("<%= script_logging_select_method %>");
+        return null;
     }
     var format = Q("#format").value.trim();
 
     if (window.selectedMethod == "GET") {
         var myRe = new RegExp("\s", "g");
         if (myRe.exec(format)) {
-            alert("space is not allowed");
-            return;
+            alert("<%= script_logging_space_not_allowed %>");
+            return null;
         }
     }
 
     var r = {};
-    r.enabled = Q("#enabled").checked;
     r.url = Q("#url").value.trim();
     r.format = encodeURIComponent(format.escapeJSON());
-    r.period = Q("#period").value;
     r.method = (Q("#m_post").checked) ? "POST" : "GET";
     r.type = Q("#data-type").value.trim();
+    r.service = 0;
+    return r;
+}
+
+function generichttp_set(r) {
+    Q("#service-type").value = "generichttp";
+    serviceOption("generichttp");
+    window.selectedMethod = r.method;
+    Q("#m_" + r.method.toLowerCase()).checked = true;
+    Q("#url").value = (r.url === undefined) ? "" : r.url;
+    Q("#data-type").value = (r.type === undefined) ? "" : r.type;
+    Q("#format").value = (r.format === undefined) ? "" : r.format;
+    checkformat(Q("#format"));
+}
+// ubidots.com
+function ubidots_set(r) {
+    Q("#service-type").value = "ubidots";
+    serviceOption("ubidots");
+
+    // different api    
+    var match = /http:\/\/([\w\.]+)\.ubidots\.com\/api\/v1\.6\/devices\/(\w+)\/\?token=(\w+)$/.exec(r.url);
+
+    Q("select[name=ubidots-account]").value = (match[1] == "things") ? 1 : 2;
+    Q("#ubidots-device").value = match[2];
+    Q("#ubidots-token").value = match[3];
+
+}
+
+function ubidots_get() {
+    var device = Q("#ubidots-device").value.trim();
+    if (!device) return null;
+    var token = Q("#ubidots-token").value.trim();
+    if (!token) return null;
+    var info = {};
+    info.url = (Q("select[name=ubidots-account]").value == 1) ?
+        "http://things.ubidots.com/api/v1.6/devices/" + device + "/?token=" + token :
+        "http://industrial.api.ubidots.com/v1.6/devices/" + device + "/?token=" + token;
+
+    info.format = encodeURIComponent("{}".escapeJSON());
+    info.method = "POST";
+    info.type = "application/json";
+    info.service = 1;
+    return info;
+}
+// thingspeak.com
+function thingspeak_set(r) {
+    Q("#service-type").value = "thingspeak";
+    serviceOption("thingspeak");
+
+    var values = {};
+    var fields = r.format.split('&');
+    for (var i = 0; i < fields.length; i++) {
+        var pair = fields[i].split("=");
+        values[pair[0]] = pair[1];
+    }
+
+    Q("#thingspeak-apikey").value = values["api_key"];
+
+    for (var i = 1; i < 9; i++)
+        Q("select[name=thingspeak-f" + i + "]").value = (typeof values["field" + i] == "undefined") ?
+        "unused" : values["field" + i].substring(1);
+}
+
+function thingspeak_get() {
+    var apikey = Q("#thingspeak-apikey").value.trim();
+    if (!apikey) return null;
+    apikey = "api_key=" + apikey;
+    var format = apikey;
+    for (var i = 1; i < 9; i++) {
+        var v = Q("select[name=thingspeak-f" + i + "]").value;
+        if (v != "unused") format = format + "&field" + i + "=%" + v;
+    }
+    if (format == apikey) return null;
+
+    var info = {};
+    info.url = "http://api.thingspeak.com/update";
+    info.format = encodeURIComponent(format.escapeJSON());;
+    info.method = "POST";
+    info.type = "application/x-www-form-urlencoded";
+    info.service = 0;
+    return info;
+}
+//brewfahter
+function brewfather_set(r) {
+    Q("#service-type").value = "brewfather";
+    serviceOption("brewfather");
+
+    var match = /http:\/\/log\.brewfather\.net\/brewpiless\?id=(\w+)$/.exec(r.url);
+    Q("#brewfather-id").value = match[1];
+    var idmatch = /"id":"([^"]+)"/.exec(r.format);
+    Q("#brewfather-device").value = idmatch[1];
+}
+
+function brewfather_get(r) {
+    var uid = Q("#brewfather-id").value.trim();
+    var device = Q("#brewfather-device").value.trim();
+    if (!uid || !device) return null;
+
+    var info = {};
+    info.url = "http://log.brewfather.net/brewpiless?id=" + uid;
+
+    var format = "{\"id\":\"" + device +
+        "\",\"beerTemp\":%b,\"beerSet\":%B,\"fridgeTemp\":%f,\"fridgeSet\":%F,\"roomTemp\":%r,\"gravity\":%g,\"tiltValue\":%t,\"auxTemp\":%a,\"extVolt\":%v,\"timestamp\":%u}";
+
+    info.format = encodeURIComponent(format.escapeJSON());;
+
+    info.method = "POST";
+    info.type = "application/json";
+    info.service = 0;
+    return info;
+}
+
+
+//
+function service_set(r) {
+    if (r.service == 1) { // ubidots.com 
+        ubidots_set(r);
+    } else {
+        if (/http:\/\/api\.thingspeak\.com\//.exec(r.url))
+            thingspeak_set(r);
+        else if (/http:\/\/log\.brewfather\.net\//.exec(r.url))
+            brewfather_set(r);
+        else
+            generichttp_set(r);
+    }
+}
+
+function update() {
+    var service = Q("#service-type").value;
+    var r;
+    var enabled = Q("#enabled").checked;
+    if (service == "generichttp") r = generichttp_get();
+    else if (service == "ubidots") r = ubidots_get();
+    else if (service == "thingspeak") r = thingspeak_get();
+    else if (service == "brewfather") r = brewfather_get();
+
+    if (enabled && !r) return;
+    if (!r) {
+        // default
+        r = { url: "", format: "", method: "POST", type: "", service: 0 };
+    }
+    r.enabled = enabled;
+    r.period = Q("#period").value;
+
     s_ajax({
         url: logurl,
         m: "POST",
         data: "data=" + JSON.stringify(r),
         success: function(d) {
-            alert("done");
+            alert("<%= done %>");
         },
         fail: function(e) {
-            alert("failed:" + e);
+            alert("<%= failed %>:" + e);
         }
     });
 
+}
+
+function remote_init(classic) {
+    var MinPeriod = { generichttp: 1, thingspeak: 15, brewfather: 900, ubidots: 1 };
+    Q("#period").onchange = function() {
+        var min = MinPeriod[Q("#service-type").value];
+        if (Q("#period").value < min) Q("#period").value = min;
+    };
+
+    serviceOption("generichttp");
+
+    s_ajax({
+        url: logurl + "?data=1",
+        m: "GET",
+        success: function(d) {
+                var r = JSON.parse(d);
+                if (typeof r.enabled == "undefined") return;
+                Q("#enabled").checked = r.enabled;
+                Q("#period").value = (r.period === undefined) ? 300 : r.period;
+                service_set(r);
+            }
+            /*,
+                fail:function(d){
+                        alert("error :"+d);
+                  }*/
+    });
+}
+
+function showformat(lab) {
+    var f = Q("#formatlist");
+    var rec = lab.getBoundingClientRect();
+    f.style.display = "block";
+    f.style.left = (rec.right + 5) + "px";
+    f.style.top = (rec.bottom + 5) + "px";
+}
+
+function hideformat() {
+    Q("#formatlist").style.display = "none";
+}
+
+function serviceOption(opt) {
+    var divs = document.querySelectorAll("#service-opt > div");
+    for (var i = 0; i < divs.length; i++) {
+        var div = divs[i];
+        if (div.id == opt) div.style.display = "block";
+        else div.style.display = "none";
+    }
+    Q("#period").onchange();
+}
+
+function serviceChange() {
+    serviceOption(Q("#service-type").value);
 }
 
 function init(classic) {
@@ -289,38 +493,6 @@ function init(classic) {
     Q("#caltemp").onchange = readingByTemp;
     Q("#tempunit").onchange = readingByTemp;
 
-    s_ajax({
-        url: logurl + "?data=1",
-        m: "GET",
-        success: function(d) {
-                var r = JSON.parse(d);
-                if (typeof r.enabled == "undefined") return;
-                Q("#enabled").checked = r.enabled;
-                window.selectedMethod = r.method;
-                Q("#m_" + r.method.toLowerCase()).checked = true;
-                Q("#url").value = (r.url === undefined) ? "" : r.url;
-                Q("#data-type").value = (r.type === undefined) ? "" : r.type;
-                Q("#format").value = (r.format === undefined) ? "" : r.format;
-                checkformat(Q("#format"));
-                Q("#period").value = (r.period === undefined) ? 300 : r.period;
-            }
-            /*,
-                fail:function(d){
-                        alert("error :"+d);
-                  }*/
-    });
-
+    remote_init(classic);
     logs.init();
-}
-
-function showformat(lab) {
-    var f = Q("#formatlist");
-    var rec = lab.getBoundingClientRect();
-    f.style.display = "block";
-    f.style.left = (rec.left) + "px";
-    f.style.top = (rec.top + 100) + "px";
-}
-
-function hideformat() {
-    Q("#formatlist").style.display = "none";
 }

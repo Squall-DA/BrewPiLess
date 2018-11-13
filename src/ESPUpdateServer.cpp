@@ -28,7 +28,7 @@ static ESP8266HTTPUpdateServer httpUpdater;
 
 #if DEVELOPMENT_FILEMANAGER == true
 
-#include "data_edit_html_gz.h"
+#include "data/edit_html_gz.h"
 
 #define SPIFFS_FORMAT_PATH     "/format-spiffs"
 #define SPIFFS_FORMATTING_PATH "/exeformat-spiffs"
@@ -153,7 +153,7 @@ static bool handleFileRead(String path){
     if(SPIFFS.exists(pathWithGz))
       path += ".gz";
     File file = SPIFFS.open(path, "r");
-    size_t sent = server.streamFile(file, contentType);
+    /*size_t sent = */ server.streamFile(file, contentType);
     file.close();
     return true;
   }

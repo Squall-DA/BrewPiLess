@@ -15,6 +15,24 @@
 #define IS_INVALID_CONTROL_TEMP(t) ((t)< -99.0)
 #define INVALID_CONTROL_TEMP -100.0
 
+#define PointToGravity(p) (1000+(Gravity)((p)+0.5))
+#define SG2Gravity(sg) (uint16_t)(((sg)-1)*1000 +0.5)
+#define Plato2Gravity(p) (uint16_t) ((p) * 10 + 0.5)
+
+void BrewKeeper::updateGravity(float sg){
+	if(theSettings.GravityConfig()->usePlato)
+	_lastGravity=Plato2Gravity(sg);
+	else
+	_lastGravity=SG2Gravity(sg);
+}
+
+void BrewKeeper::updateOriginalGravity(float sg){ 
+	if(theSettings.GravityConfig()->usePlato)
+		_profile.setOriginalGravityPoint(Plato2Gravity(sg));
+	else
+		_profile.setOriginalGravityPoint(SG2Gravity(sg)); 
+}
+
 void BrewKeeper::keep(time_t now)
 {
 	if((now - _lastSetTemp) < MINIMUM_TEMPERATURE_SETTING_PERIOD) return;
@@ -31,6 +49,7 @@ void BrewKeeper::keep(time_t now)
 	_profile.setUnit(unit);
 
 	float temp=_profile.tempByTimeGravity(now,_lastGravity);
+	DBG_PRINTF("beerpfoile:Temp:%d\n",(int)(temp *100));
 
 	if(IS_INVALID_CONTROL_TEMP(temp)) return;
 	if(OUT_OF_RANGE(temp,beerSet,MINIMUM_TEMPERATURE_STEP)){
@@ -59,8 +78,8 @@ void BrewProfile::setUnit(char unit)
 }
 
 
-void BrewProfile::setOriginalGravity(float gravity){
-    _status->OGPoints =(uint8_t)( (gravity - 1.0) * 1000.0);
+void BrewProfile::setOriginalGravityPoint(uint16_t gravityPoint){
+    _status->OGPoints =gravityPoint;
     _saveBrewingStatus();
 }
 
@@ -73,20 +92,19 @@ void BrewProfile::_saveBrewingStatus(void){
 
 void BrewProfile::_estimateStep(time_t now,Gravity gravity)
 {
-	uint32_t timeEnterCurrentStep = _schedule->startDay;
-	uint8_t currentStep =0;
-	while(currentStep<_schedule->numberOfSteps)
+	_status->startingDate= _schedule->startDay;
+	_status->timeEnterCurrentStep = _schedule->startDay;
+	_status->currentStep =0;
+	while(_status->currentStep<_schedule->numberOfSteps && _status->timeEnterCurrentStep <= now)
 	{
 		uint32_t csd=currentStepDuration();
 		if(checkCondition(now,gravity)){
-			timeEnterCurrentStep += csd;
-			currentStep++;
+			_status->timeEnterCurrentStep += csd;
+			_status->currentStep++;
 		}else{
 			break;
 		}
 	}
-	_status->currentStep = currentStep;
-	_status->timeEnterCurrentStep = timeEnterCurrentStep;
 }
 
 void BrewProfile::_toNextStep(unsigned long time)
@@ -98,6 +116,7 @@ void BrewProfile::_toNextStep(unsigned long time)
 			csd = currentStepDuration();
 	}while(csd == 0 && _status->currentStep < _schedule->numberOfSteps );
 	_status->timeEnterCurrentStep=time;	
+	_status->startingDate= _schedule->startDay;
 	_saveBrewingStatus();
 	DBG_PRINTF("_toNextStep:%d current:%ld, duration:%ld\n",_status->currentStep,time, csd );
 }
@@ -107,7 +126,9 @@ bool BrewProfile::checkCondition(unsigned long time,Gravity gravity){
 	ScheduleStep *step = & _schedule->steps[_status->currentStep];
 
 	char condition=step->condition;
-	uint32_t csd = currentStepDuration();
+
+	uint32_t csd = ScheduleDayToTime(step->days);
+
 	bool timeCondition =(csd <= (time - _status->timeEnterCurrentStep));
 	
 	if(condition == 'r' || condition == 't'){
@@ -117,10 +138,13 @@ bool BrewProfile::checkCondition(unsigned long time,Gravity gravity){
 		bool sgCondition=false;
 		Gravity stepSG=step->gravity.sg;
 		if(step->attSpecified) {
-			stepSG =PointToGravity(((float) _status->OGPoints * (1.0 - (float)step->gravity.attenuation/100.0)));
+			if(theSettings.GravityConfig()->usePlato)
+				stepSG =(float) _status->OGPoints * (1.0 - (float)step->gravity.attenuation/100.0);
+			else
+				stepSG =PointToGravity(((float) _status->OGPoints * (1.0 - (float)step->gravity.attenuation/100.0)));
 		}
-		if(IsGravityValid(stepSG)) sgCondition=(stepSG <= stepSG);
-		bool stableSg = gravityTracker.stable(step->gravity.stable.stableTime,step->gravity.stable.stablePoint);
+		if(IsGravityValid(stepSG)) sgCondition=(gravity <= stepSG);
+		bool stableSg = gravityTracker.stable(step->stable.stableTime,step->stable.stablePoint);
 
 		DBG_PRINTF("tempByTimeGravity: sgC:%c,gravity=%d, target=%d\n",sgCondition? 'Y':'N',
 			gravity,_schedule->steps[_status->currentStep].gravity.sg);
@@ -150,11 +174,15 @@ bool BrewProfile::checkCondition(unsigned long time,Gravity gravity){
 	return false;
 }
 
-float BrewProfile::tempByTimeGravity(unsigned long time,Gravity gravity)
+float BrewProfile::tempByTimeGravity(time_t time,Gravity gravity)
 {
 	if(time < _schedule->startDay) return INVALID_CONTROL_TEMP;
 
-	if(	_status->currentStep==0 && _status->timeEnterCurrentStep==0){
+	DBG_PRINTF("currentStep:%d, timeEnterCurrentSTep:%ld, time:%ld\n",_status->currentStep,_status->timeEnterCurrentStep,time);
+
+	if(	_status->startingDate ==0 
+	   || _status->startingDate != _schedule->startDay
+		|| (_status->currentStep==0 && _status->timeEnterCurrentStep==0)){
 		_estimateStep(time,gravity);
 	}
 	if(_status->currentStep >= _schedule->numberOfSteps) return INVALID_CONTROL_TEMP;
@@ -195,4 +223,16 @@ float BrewProfile::tempByTimeGravity(unsigned long time,Gravity gravity)
 
 uint32_t BrewProfile::currentStepDuration(void){
 	return ScheduleDayToTime(_schedule->steps[_status->currentStep].days);
+}
+
+void  BrewProfile::profileUpdated(){
+	// the beer profile is updated: update status
+	if(_schedule->startDay != _status->startingDate){
+		// update current status.
+		_status->startingDate=0;
+		_status->currentStep=0;
+		_status->timeEnterCurrentStep=0;
+	}else{
+		// assume the same schedule. do nothing.
+	}
 }

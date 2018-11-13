@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+
+<html lang="<%= page_lang %>">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        <%= config_page_title %>
+    </title>
+    <meta name="apple-mobile-web-app-title" content="BrewPiLess">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <script type="text/javascript" src="js/vendor/bwf.js"></script>
+    <script type="text/javascript" src="js/shared.js"></script>
+    <script type="text/javascript" src="js/script-config.js"></script>
+    <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+    <link rel="stylesheet" href="style-config.css">
+</head>
+</head>
+
+<body onload="load();">
+
+    <!-- build:include partials/header.html -->
+    <!-- /build -->
+
+    <div viewport layout vertical>
+        <div id="inputform" main>
+
+            <div id="sysconfig" class="card">
+                <form action="/setconfig" action="post">
+                    <h5>
+                        <%= config_page_title %>
+                    </h5>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_lcd_auto_off %>
+                        </h6>
+                        <input name="aoff" type="text" size="5" maxlength="5" class="nb">
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_title %>
+                        </h6>
+                        <input name="title" type="text" size="12" maxlength="24">
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_host_network_name %>
+                        </h6>
+                        <input name="name" type="text" size="12" maxlength="16">
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_http_port %>
+                        </h6>
+                        <input name="port" type="text" size="5" maxlength="5">
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_username %>
+                        </h6>
+                        <input name="user" type="text" size="12" maxlength="16">
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_password %>
+                        </h6>
+                        <input name="pass" type="password" size="12" maxlength="16">
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_always_password %>
+                        </h6>
+                        <input type="checkbox" id="protect" name="protect" class="switch-input" checked>
+                        <label for="protect" class="switch-label" style="min-width: 0;"></label>
+                    </div>
+
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_network_mode %>
+                        </h6>
+                        <select name="wifi">
+                            <option value="2"><%= config_ap %></option>
+                            <option value="3"><%= config_stationap %></option>
+                        </select>
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_network %>
+                        </h6>
+                        <button id="connnected-ssid" class="btn" onclick="Net.show();return false;">...</button>
+                    </div>
+                    <div layout horizontal cross-center>
+                        <h6 class="inline-header">
+                            <%= config_ip %>
+                        </h6>
+                        <span id="sta-ip"></span>
+                    </div>
+
+                    <div class="card-footer">
+                        <input type="submit" id="submitsave" name="submit" class="btn"></input>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- network selection -->
+    <div id="networkselection" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <%= config_network_selection %>
+            </div>
+            <div id="networks">
+                <div class="nwlist">
+                    <a href="#" onclick="Net.select(this)" class="ssid">N</a>&nbsp;<span class="scannednetwork"></span></div>
+            </div>
+            <div class="center">
+                <a href="#" onclick="return Net.scan();">
+                    <%= config_scan %>
+                </a>
+            </div>
+            <form method="get" action="#">
+                <input id="ssid" name="ssid" length="32" placeholder="SSID"><br>
+                <input id="nwpass" name="nwpass" length="64" type="password" placeholder="password"><br><br>
+                <input id="staticip" name="ip" length="1" placeholder="<%= config_fixedip %>" class="nb iptype"><br>
+                <input id="gateway" name="gw" length="1" placeholder="<%= config_gateway %>" class="nb iptype"><br>
+                <input id="netmask" name="mask" length="1" placeholder="<%= config_netmask %>" class="nb iptype"><br><br>
+                <button type="button" onclick="return Net.save()"><%= config_save_change %></button>
+                <button onclick="Net.hide();return false;"><%= dlg_cancel %></button>
+            </form>
+        </div>
+    </div>
+
+    <!-- build:include partials/footer.html -->
+    <!-- /build -->
+
+    <div id="waitprompt" class="modal">
+        <div class="modal-content">
+            <%= config_wait_restart %>
+        </div>
+    </div>
+
+</body>
+
+</html>
