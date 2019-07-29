@@ -4,11 +4,13 @@
 #include <DNSServer.h>
 
 #define WiFiStateConnected 0
-#define WiFiStateWaitToConnect 1
+#define WiFiStateModeChangePending 1
 #define WiFiStateConnecting 2
 #define WiFiStateDisconnected 3
 #define WiFiStateDisconnectPending 4
 #define WiFiStateChangeConnectPending 5
+#define WiFiStateConnectionRecovering 6
+
 
 #define WiFiScanStateNone 0
 #define WiFiScanStatePending 1
@@ -22,11 +24,12 @@
 class WiFiSetupClass
 {
 public:
-	WiFiSetupClass():_wifiState(WiFiStateConnected),_wifiScanState(WiFiScanStateNone),_settingApMode(false),_apMode(false),_switchToAp(true),_autoReconnect(true),
+	WiFiSetupClass():_wifiState(WiFiStateConnected),_wifiScanState(WiFiScanStateNone),_apMode(false),_switchToAp(true),_autoReconnect(true),
 		 _maxReconnect(5),_eventHandler(NULL),_targetSSID(NULL),_targetPass(NULL),_ip(INADDR_NONE),_gw(INADDR_NONE),_nm(INADDR_NONE){}
 
-	void begin(char const *ssid,const char *passwd=NULL);
-	void staConfig(bool apMode,IPAddress ip=(uint32_t)0x00000000,IPAddress gw=(uint32_t)0x00000000, IPAddress nm=(uint32_t)0x00000000);
+	void begin(WiFiMode mode, char const *ssid,const char *passwd=NULL);
+	void setMode(WiFiMode mode);
+	void staConfig(IPAddress ip=(uint32_t)0x00000000,IPAddress gw=(uint32_t)0x00000000, IPAddress nm=(uint32_t)0x00000000, IPAddress dns=(uint32_t)0x00000000);
 
 	void onEvent(std::function<void(const char*)> handler){ _eventHandler = handler;}
 
@@ -39,15 +42,15 @@ public:
 
 	String scanWifi(void);
 	bool requestScanWifi(void);
-	bool connect(char const *ssid,const char *passwd=NULL,IPAddress ip=(uint32_t)0x00000000,IPAddress gw=(uint32_t)0x00000000, IPAddress nm=(uint32_t)0x00000000);
+	bool connect(char const *ssid,const char *passwd=NULL,IPAddress ip=(uint32_t)0x00000000,IPAddress gw=(uint32_t)0x00000000, IPAddress nm=(uint32_t)0x00000000,IPAddress dns=(uint32_t)0x00000000);
 	bool disconnect(void);
 
 	bool isConnected(void);
 	String status(void);
 private:
+	WiFiMode _mode;
 	byte _wifiState;
 	byte _wifiScanState;
-	bool _settingApMode;
 	bool _apMode;
 	bool _switchToAp;
 	bool _autoReconnect;
@@ -68,10 +71,12 @@ private:
 	IPAddress _ip;
 	IPAddress _gw;
 	IPAddress _nm;
+	IPAddress _dns;
 
 	void setupApService(void);
-	void enterApMode();
+	void enterBackupApMode();
 	void onConnected();
+	void createNetwork();
 };
 
 extern WiFiSetupClass WiFiSetup;

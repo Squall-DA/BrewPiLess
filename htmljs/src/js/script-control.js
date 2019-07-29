@@ -58,6 +58,7 @@ var profileEditor = {
         this.setStartDate(d);
         this.reorg();
         this.markdirty(true);
+        ControlChart.update(this.chartdata(), this.tempUnit);
     },
     rowList: function() {
         var tb = document.getElementById("profile_t").getElementsByTagName("tbody")[0];
@@ -438,7 +439,7 @@ var profileEditor = {
         this.tempUnit = a.u;
         this.clear();
         this.renderRows(a.t);
-        ControlChart.update(this.chartdata(), this.tempUnit)
+        ControlChart.update(this.chartdata(), this.tempUnit);
     },
     initProfile: function(p) {
         if (typeof p != "undefined") {
@@ -459,6 +460,7 @@ var profileEditor = {
             var temp = parseFloat(tcell.innerHTML);
             if (!isNaN(temp)) tcell.innerHTML = (u == 'C') ? F2C(temp) : C2F(temp);
         }
+        ControlChart.update(this.chartdata(), this.tempUnit);
     }
 };
 
@@ -686,8 +688,8 @@ var ControlChart = {
     },
     update: function(data, unit) {
         if (data.length == 0) return;
-        this.data = data;
         this.unit = unit;
+        this.data = data;
         this.chart.updateOptions({
             'file': this.data
         });
@@ -828,7 +830,7 @@ function ccparameter(s) {
         minDegree: s.tempSetMin,
         maxDegree: s.tempSetMax,
         tempUnit: s.tempFormat
-    };
+    };    
     if (setting.tempUnit != BrewPiSetting.tempUnit) {
         updateTempUnit(setting.tempUnit);
         profileEditor.setTempUnit(setting.tempUnit);
@@ -837,11 +839,11 @@ function ccparameter(s) {
 }
 
 function rcvBeerProfile(p) {
+    closeDlgLoading();
     updateTempUnit(p.u); // using profile temp before we get from controller
     BrewPiSetting.tempUnit = p.u;
     profileEditor.initProfile(p);
     ControlChart.init("tc_chart", profileEditor.chartdata(), p.u);
-    closeDlgLoading();
 }
 
 function initctrl_C(next) {
@@ -863,6 +865,7 @@ function initctrl() {
     getActiveNavItem();
     Capper.init();
     modekeeper.init();
+    PTC.init(Q("#ptc-control"));
     openDlgLoading();
 
     BWF.init({
@@ -871,8 +874,8 @@ function initctrl() {
         },
         error: function(e) {
             //console.log("error");
-            communicationError();
             closeDlgLoading();
+            communicationError();
         },
         handlers: {
             A: function(c) {
@@ -885,6 +888,8 @@ function initctrl() {
                 }
                 if (typeof c["cap"] != "undefined")
                     Capper.status(c["cap"]);
+                if (typeof c["ptcs"] != "undefined")
+                    PTC.config(c.ptcs);
             },
             C: function(c) { ccparameter(c); },
             B: rcvBeerProfile

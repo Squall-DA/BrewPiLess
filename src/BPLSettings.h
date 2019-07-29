@@ -2,6 +2,7 @@
 #define BPLSettings_H
 #include <FS.h>
 #include <time.h>
+#include "Config.h"
 //*****************************************************
 // 156 bytes
 typedef struct _SystemConfiguration{
@@ -16,7 +17,8 @@ typedef struct _SystemConfiguration{
     uint16_t  port;
     uint8_t passwordLcd;
     uint8_t wifiMode;
-    uint8_t _padding[8];
+    uint32_t dns;
+    uint8_t _padding[4];
 }SystemConfiguration;
 
 //*****************************************************
@@ -168,6 +170,62 @@ typedef struct _ParasiteTempControlSettings{
     uint8_t _padding[4];
 }ParasiteTempControlSettings;
 
+//*****************************************************
+// MQtt remote control
+// too many strings. fixed allocation wastes too much.
+// server, user, pass, 4x path = 128 * 7 
+// Furthermore, ArduinoJson will modify the "source" buffer.
+// so additional buffer is neede to decode.
+// So let's store the strings in  a compact way 
+#if SupportMqttRemoteControl
+
+#define MqttModeOff 0
+#define MqttModeControl 1
+#define MqttModeLogging 2
+#define MqttModeBothControlLoggging 3
+
+#define MqttReportIndividual 0
+#define MqttReportJson 1
+
+#define MqttSettingStringSpace 320
+typedef struct _MqttRemoteControlSettings{
+    uint16_t port;
+    uint8_t  mode;
+    uint8_t  reportFormat;
+
+    uint16_t  serverOffset;
+    uint16_t  usernameOffset;
+    uint16_t  passwordOffset;
+    uint16_t  modePathOffset;
+    uint16_t  beerSetPathOffset;
+    uint16_t  capControlPathOffset;
+    uint16_t  ptcPathOffset;
+    uint16_t  fridgeSetPathOffset;
+
+    uint16_t  reportBasePathOffset;
+    uint16_t  reportPeriod;
+    uint8_t   _padding2[2];
+
+    uint8_t   _strings[MqttSettingStringSpace];
+}MqttRemoteControlSettings;
+#endif
+
+//*****************************************************
+// Pressure Sensor
+#if SupportPressureTransducer
+#define PMModeOff 0
+#define PMModeMonitor 1
+#define PMModeControl 2
+
+typedef struct _PressureMonitorSettings{
+    float fa;
+    uint16_t fb;
+    uint8_t mode;
+    uint8_t psi;
+    uint8_t _padding[9];
+}PressureMonitorSettings;
+#endif
+
 //####################################################
 // whole structure
 struct Settings{
@@ -180,6 +238,13 @@ struct Settings{
     RemoteLoggingInformation remoteLogginInfo; // 636: 444
     AutoCapSettings autoCapSettings; // 1080: 12
     ParasiteTempControlSettings parasiteTempControlSettings; //1092: 20
+
+#if SupportPressureTransducer
+    PressureMonitorSettings pressureMonitorSettings; // 16
+#endif
+#if SupportMqttRemoteControl
+    MqttRemoteControlSettings mqttRemoteControlSettings;
+#endif
 };
 
 class BPLSettings
@@ -219,6 +284,22 @@ public:
     ParasiteTempControlSettings *parasiteTempControlSettings(void){ return &_data.parasiteTempControlSettings;}
     bool dejsonParasiteTempControlSettings(String json);
     String jsonParasiteTempControlSettings(bool enabled);
+
+    void preFormat(void);
+    void postFormat(void);
+    
+#if SupportPressureTransducer
+    //pressure monitor
+    PressureMonitorSettings *pressureMonitorSettings(){return &_data.pressureMonitorSettings;}
+    bool dejsonPressureMonitorSettings(String json);
+    String jsonPressureMonitorSettings(void);
+#endif
+
+#if SupportMqttRemoteControl
+    MqttRemoteControlSettings *mqttRemoteControlSettings(void){ return & _data.mqttRemoteControlSettings;}
+    bool dejsonMqttRemoteControlSettings(String json);
+    String jsonMqttRemoteControlSettings(void);
+#endif
 protected:
     Settings _data;
 
@@ -231,7 +312,9 @@ protected:
     void defaultLogFileIndexes(void);
     void defaultRemoteLogging(void);
     void defaultAutoCapSettings(void);
+#if EanbleParasiteTempControl   
     void defaultParasiteTempControlSettings(void);
+#endif
 };
 
 extern BPLSettings theSettings;

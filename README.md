@@ -46,6 +46,33 @@ You will need to run the hardware setup procedure after upgrading to v2.4 from p
  The log format before v2.0 is vulnerable. There seems to be some unconsidered conditions that break the log. 
 
 ## Version History
+ * v3.6
+    * update framework to 2.2.0
+    * **4m2m flash layout for All but SONOFF, due to size growth of framework.**
+    * update OLED library to 4.0 (Not verified by me, but SOMEONE@HBT did report working)
+    * update to ArduinoJson V6
+    * add revised LCD page. at /lcd
+    * SOFF OTA configuraton not longer available for space limit
+    * Using interrupt for more responsive button operation.
+    * MQTT publish/subscribe, NEW UI only.
+
+ * v3.5.1 
+    * fixed iSpindel temperature unit issue
+    * update new OLED library(not verified)
+    * The version number is still "3.5"
+
+ * v3.5
+    * MQTT Remote Control
+    * Pressure transducer support
+    * Add iSpindel WiFi signal if available, "Now" button in profile editing
+    * "Fixed" incorrect time issue after restart.
+    * Add DNS setting for static IP
+
+ * v3.4
+    * Add back STATAION mode only.
+    * fixing Cap control tab display bug.
+    * fixing blocking "Communication to BPL" dialog under AP mode
+
  * v3.3
     * LCD information push from server instead of request/response.
     * Replace ServerSideEvent by WebSocket. 
@@ -53,6 +80,7 @@ You will need to run the hardware setup procedure after upgrading to v2.4 from p
 
  * v3.2
     * Revise remote logging settings. Simpler interface and special process for ubidots.com.
+    * Update to Arduino/ESP8266 framework 1.8.0
 
  * v3.1
     * Fix beer profile which uses gravity as conditions

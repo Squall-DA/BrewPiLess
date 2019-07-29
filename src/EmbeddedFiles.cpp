@@ -5,6 +5,10 @@
 #ifndef NULL
 #define NULL 0
 #endif
+#define Language english
+#define STRINGIFY(str)  #str
+#define PASTER(lo,file)   STRINGIFY(data/lo ## file )
+#define EVALUATOR(l,x)  PASTER(l,x)
 
 #define STRINGIFY(str)  #str
 #define PASTER(lo,file)   STRINGIFY(data/lo ## file )
@@ -23,6 +27,7 @@
 #define LogHtmFile EVALUATOR(WebPageLanguage,_log_htm.h)
 #define GravityHtmFile EVALUATOR(WebPageLanguage,_gdc_htm.h)
 #define ConfigHtmFile EVALUATOR(WebPageLanguage,_config_htm.h)
+#define PressureHtmFile EVALUATOR(WebPageLanguage,_pressure_htm.h)
 
 
 
@@ -49,7 +54,11 @@ const char file_testcmd_htm [] PROGMEM="/testcmd.htm";
 
 #include "data/dygraph_js.h"
 
+
+const char file_lcd_htm [] PROGMEM="/lcd";
+
 #if FrontEnd == TomsFrontEnd
+#include "data/lcd_htm.h"
 
 #include IndexHtmFile
 #include ControlHtmFile
@@ -57,6 +66,7 @@ const char file_testcmd_htm [] PROGMEM="/testcmd.htm";
 #include LogHtmFile
 #include GravityHtmFile
 #include ConfigHtmFile
+#include PressureHtmFile
 
 const char file_index_htm [] PROGMEM="/index.htm";
 const char file_dygraph_js [] PROGMEM="/dygraph-combined.js";
@@ -65,6 +75,7 @@ const char file_setup_htm [] PROGMEM="/setup.htm";
 const char file_logconfig [] PROGMEM="/logging.htm";
 const char file_gravitydevice [] PROGMEM="/gravity.htm";
 const char file_config [] PROGMEM="/config.htm";
+const char file_pressure [] PROGMEM="/pressure.htm";
 
 EmbeddedFileMapEntry fileMaps[]={
 {file_bwf_js,data_bwf_min_js_gz,sizeof(data_bwf_min_js_gz),true},
@@ -75,11 +86,14 @@ EmbeddedFileMapEntry fileMaps[]={
 {file_logconfig,logging_htm_gz,sizeof(logging_htm_gz),true},
 {file_gravitydevice,gravity_htm_gz,sizeof(gravity_htm_gz),true},
 {file_config,config_htm_gz,sizeof(config_htm_gz),true},
-{file_testcmd_htm,(const uint8_t *)data_testcmd_htm,0,false}
+{file_pressure,pressure_htm_gz,sizeof(pressure_htm_gz),true},
+{file_testcmd_htm,(const uint8_t *)data_testcmd_htm,0,false},
+{file_lcd_htm,lcd_htm_gz,sizeof(lcd_htm_gz),true}
 };
 
 #else
 
+#include "data/c_lcd_htm.h"
 
 #include ClassicIndexHtmFile
 #include ClassicSetupHtmFile
@@ -101,7 +115,8 @@ EmbeddedFileMapEntry fileMaps[]={
 {file_logconfig,data_c_log_htm_gz,sizeof(data_c_log_htm_gz),true},
 {file_gravitydevice,data_c_gdc_htm_gz,sizeof(data_c_gdc_htm_gz),true},
 {file_config,data_c_config_htm_gz,sizeof(data_c_config_htm_gz),true},
-{file_testcmd_htm,(const uint8_t *)data_testcmd_htm,0,false}
+{file_testcmd_htm,(const uint8_t *)data_testcmd_htm,0,false},
+{file_lcd_htm,lcd_htm_gz,sizeof(lcd_htm_gz),true}
 };
 
 #endif

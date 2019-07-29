@@ -56,13 +56,21 @@ void ExternalData::sseNotify(char *buf){
 			len=sprintFloat(coeff[i],_cfg->ispindelCoefficients[i],9);
 			coeff[i][len]='\0';	
 		}
-
+		char strRssi[32];
+		if(_rssiValid){
+			len=sprintf(strRssi,",\"rssi\":%d",_rssi);
+			strRssi[len]='\0';
+		}else{
+			strRssi[1]=' ';
+			strRssi[0]='\0';
+		} 
 		const char *spname=(_ispindelName)? _ispindelName:"Unknown";
-		sprintf(buf,"G:{\"name\":\"%s\",\"battery\":%s,\"sg\":%s,\"angle\":%s,\"lu\":%ld,\"lpf\":%s,\"stpt\":%d,\"fpt\":%d,\"ctemp\":%d,\"plato\":%d}",
+		sprintf(buf,"G:{\"name\":\"%s\",\"battery\":%s,\"sg\":%s,\"angle\":%s %s,\"lu\":%ld,\"lpf\":%s,\"stpt\":%d,\"fpt\":%d,\"ctemp\":%d,\"plato\":%d}",
 					spname, 
 					strbattery,
 					strgravity,
 					strtilt,
+					strRssi,
 					_lastUpdate,slowpassfilter,_cfg->stableThreshold,
 					_cfg->numberCalPoints,
                     _cfg->ispindelCalibrationBaseTemp,
@@ -191,11 +199,16 @@ bool ExternalData::processGravityReport(char data[],size_t length, bool authenti
 {
 	//const int BUFFER_SIZE = JSON_OBJECT_SIZE(20);
 	//StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
+	#if ARDUINOJSON_VERSION_MAJOR == 6
+	DynamicJsonDocument root(512);
+	auto jsonerror=deserializeJson(root,data,length);
+	if(jsonerror 
+	#else
 	DynamicJsonBuffer jsonBuffer(512);
 	JsonObject& root = jsonBuffer.parseObject((char*)data,length);
-
-
-	if (!root.success() || !root.containsKey("name")){
+	if (!root.success() 
+	#endif
+		|| !root.containsKey("name")){
   		DBG_PRINTF("Invalid JSON\n");
   		error = ErrorJSONFormat;
   		return false;
@@ -244,9 +257,16 @@ bool ExternalData::processGravityReport(char data[],size_t length, bool authenti
 		    DBG_PRINTF("iSpindel report no temperature!\n");
 		    return false;
 		}
-		
+
         float itemp=root["temperature"];
-		setAuxTemperatureCelsius(itemp);
+		float tempC=itemp;
+		if(root.containsKey("temp_units")){
+			const char *TU=root["temp_units"];
+			if(*TU == 'F') tempC = (itemp-32)/1.8;
+			else if(*TU == 'K') tempC = itemp- 273.15;
+		}
+
+		setAuxTemperatureCelsius(tempC);
 
 		//Serial.print("temperature:");
 		//Serial.println(itemp);
@@ -260,6 +280,9 @@ bool ExternalData::processGravityReport(char data[],size_t length, bool authenti
 
         if(root.containsKey("battery"))
     	    setDeviceVoltage(root["battery"]);
+
+        if(root.containsKey("RSSI"))
+    	    setDeviceRssi(root["RSSI"]);
 
 		//setPlato(root["gravityP"],TimeKeeper.getTimeSeconds());
 		if(root.containsKey("gravity") &&
